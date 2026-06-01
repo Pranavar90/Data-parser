@@ -114,25 +114,22 @@ body::after {
 
 .topbar-brand { display: flex; align-items: center; gap: 10px; }
 .logo-icon {
-  width: 26px; height: 26px;
+  height: 36px; width: auto;
+  flex-shrink: 0; overflow: hidden;
+  position: relative;
+  display: flex; align-items: center;
+}
+.logo-icon img { height: 36px; width: auto; object-fit: contain; display: block; }
+.logo-fallback {
+  height: 36px; width: 36px;
   background: linear-gradient(135deg, var(--accent), var(--accent-dim));
   border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 700; color: #fff;
-  flex-shrink: 0; overflow: hidden;
-  position: relative;
+  font-size: 13px; font-weight: 800; color: #fff;
+  letter-spacing: -0.5px;
 }
-.logo-icon::after {
-  content: '';
-  position: absolute; inset: 0;
-  border-radius: 6px;
-  box-shadow: 0 0 12px var(--accent-glow);
-  pointer-events: none;
-}
-.logo-icon img { width: 100%; height: 100%; object-fit: contain; display: none; position: relative; z-index: 1; }
-.logo-icon img.loaded { display: block; }
-.logo-icon img.loaded + .logo-fallback { display: none; }
-.logo-fallback { font-size: 11px; font-weight: 800; letter-spacing: -0.5px; position: relative; z-index: 1; }
+.logo-icon img.error + .logo-fallback { display: flex; }
+.logo-icon img:not(.error) + .logo-fallback { display: none; }
 
 .topbar-titles { line-height: 1.2; }
 .topbar-title {
@@ -1106,9 +1103,9 @@ body::after {
   <header class="topbar">
     <div class="topbar-brand">
       <div class="logo-icon">
-        <img id="logo-img" src="/static/logo.png" alt="PML"
-          onload="this.classList.add('loaded')" onerror="this.remove()" />
-        <span class="logo-fallback">&#x2B21;</span>
+        <img id="logo-img" src="/static/logo.jpg" alt="Planet Materials Labs"
+          onerror="this.classList.add('error')" />
+        <span class="logo-fallback">PML</span>
       </div>
       <div class="topbar-titles">
         <div class="topbar-title">Planet Materials Labs</div>
