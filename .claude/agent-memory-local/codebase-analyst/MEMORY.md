@@ -1,0 +1,4 @@
+- [Project Overview](project_overview.md) — RL Research Assistant: autonomous materials R&D loop
+- [Architecture Summary](architecture.md) — React frontend + FastAPI backend, Qdrant vector DB, job queue
+- [Document Ingestion Flow](ingestion_flow.md) — PDF upload → job queue → parser → extractor → Qdrant storage
+- [Parser Pipeline](parser_pipeline.md) — Text extraction, doc-type detection, property extraction via LLM

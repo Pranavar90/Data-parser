@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "WebSearch",
+      "Bash(xargs grep:*)",
+      "WebFetch(domain:www.planetmatlabs.com)",
+      "WebFetch(domain:www.linkedin.com)",
+      "WebFetch(domain:brandfetch.com)"
+    ]
+  }
+}
