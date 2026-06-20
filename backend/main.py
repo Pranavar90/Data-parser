@@ -5,7 +5,9 @@ main.py — FastAPI backend for the Planet Materials Labs PDF Bulk Parser.
 import asyncio
 import io
 import json
+import logging
 import os
+import re
 import shutil
 import time
 import uuid
@@ -15,6 +17,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -265,61 +269,61 @@ async def _run_job(job_id: str, files: List[Dict[str, str]], queue: asyncio.Queu
     total = len(files)
     success = failed = 0
 
-    await queue.put({"type": "start", "total": total, "files": [f["rel_path"] for f in files]})
+    try:
+        await queue.put({"type": "start", "total": total, "files": [f["rel_path"] for f in files]})
 
-    # ARCH-002: use get_running_loop() — correct inside a running coroutine.
-    loop = asyncio.get_running_loop()
+        # ARCH-002: use get_running_loop() — correct inside a running coroutine.
+        loop = asyncio.get_running_loop()
 
-    for i, f in enumerate(files):
-        await queue.put({
-            "type": "progress",
-            "index": i,
-            "total": total,
-            "file": f["rel_path"],
-            "status": "processing",
-        })
-
-        try:
-            t0 = time.time()
-            data = await loop.run_in_executor(_executor, _process_file, f["abs_path"])
-            elapsed = round(time.time() - t0, 1)
-
-            job["results"].append({"rel_path": f["rel_path"], "data": data, "elapsed": elapsed})
-            success += 1
-
+        for i, f in enumerate(files):
             await queue.put({
-                "type": "complete",
+                "type": "progress",
                 "index": i,
                 "total": total,
                 "file": f["rel_path"],
-                "status": "success",
-                "confidence": data.get("extraction_confidence", 0.0),
-                "doc_type": data.get("doc_type", "unknown"),
-                "props": data.get("properties_count", 0),
-                "elapsed": elapsed,
-            })
-        except Exception as e:
-            failed += 1
-            job["errors"].append({"file": f["rel_path"], "error": str(e)})
-            await queue.put({
-                "type": "complete",
-                "index": i,
-                "total": total,
-                "file": f["rel_path"],
-                "status": "failed",
-                "error": str(e),
+                "status": "processing",
             })
 
-    summary = {"total": total, "success": success, "failed": failed, "job_id": job_id}
-    job["status"] = "done"
-    job["summary"] = summary
+            try:
+                t0 = time.time()
+                data = await loop.run_in_executor(_executor, _process_file, f["abs_path"])
+                elapsed = round(time.time() - t0, 1)
 
-    # Results are safely in _jobs before we delete temp files.
-    if job.get("tmp_dir"):
-        shutil.rmtree(job["tmp_dir"], ignore_errors=True)
+                job["results"].append({"rel_path": f["rel_path"], "data": data, "elapsed": elapsed})
+                success += 1
 
-    await queue.put({"type": "done", **summary})
-    _job_queues.pop(job_id, None)
+                await queue.put({
+                    "type": "complete",
+                    "index": i,
+                    "total": total,
+                    "file": f["rel_path"],
+                    "status": "success",
+                    "confidence": data.get("extraction_confidence", 0.0),
+                    "doc_type": data.get("doc_type", "unknown"),
+                    "props": data.get("properties_count", 0),
+                    "elapsed": elapsed,
+                })
+            except Exception as e:
+                failed += 1
+                job["errors"].append({"file": f["rel_path"], "error": str(e)})
+                await queue.put({
+                    "type": "complete",
+                    "index": i,
+                    "total": total,
+                    "file": f["rel_path"],
+                    "status": "failed",
+                    "error": str(e),
+                })
+
+        summary = {"total": total, "success": success, "failed": failed, "job_id": job_id}
+        job["status"] = "done"
+        job["summary"] = summary
+        await queue.put({"type": "done", **summary})
+    finally:
+        # Always clean up temp files, even if the job errors out.
+        if job.get("tmp_dir"):
+            shutil.rmtree(job["tmp_dir"], ignore_errors=True)
+        _job_queues.pop(job_id, None)
 
 
 def _process_file(abs_path: str) -> Dict[str, Any]:
@@ -392,7 +396,6 @@ def _process_file(abs_path: str) -> Dict[str, Any]:
 
 def _extract_material_name_regex(text: str) -> str:
     """Regex fallback for material name — mirrors Rlresearchassistant's approach."""
-    import re
     patterns = [
         r"(?:product\s*name|trade\s*name|material\s*name|grade)[:\s]+([A-Za-z0-9][A-Za-z0-9\s\-/®™+]{2,50}?)(?:\n|,|\.|;)",
         r"(?:^|\n)([A-Z][A-Z0-9\-]{3,30}(?:\s[A-Z0-9]{1,10})?)\s*(?:TDS|Data\s*Sheet|Technical\s*Data)",

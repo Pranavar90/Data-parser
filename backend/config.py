@@ -55,7 +55,6 @@ def get_all() -> dict:
         },
         "output": {
             "json_indent":      _get(cfg, "output.json_indent",      2),
-            "include_raw_text": _get(cfg, "output.include_raw_text", False),
         },
         "app": {
             "host": _get(cfg, "app.host", "127.0.0.1"),
@@ -79,7 +78,7 @@ def reload() -> None:
     """
     global OLLAMA_BASE, LLM_MODEL, OLLAMA_TIMEOUT, NUM_GPU, NUM_CTX, KEEP_ALIVE
     global TDS_EXTRACT_CHARS, PAPER_EXTRACT_CHARS, CHUNK_SIZE, CHUNK_OVERLAP
-    global MAX_RETRIES, TDS_BIAS, JSON_INDENT, INCLUDE_RAW_TEXT, APP_HOST, APP_PORT
+    global MAX_RETRIES, TDS_BIAS, JSON_INDENT, APP_HOST, APP_PORT
     new = _load()
     OLLAMA_BASE         = _get(new, "ollama.base_url",        "http://127.0.0.1:11434")
     LLM_MODEL           = _get(new, "ollama.model",            "qwen2.5:3b-instruct-q4_K_S")
@@ -94,7 +93,6 @@ def reload() -> None:
     MAX_RETRIES         = _get(new, "parser.max_retries",      1)
     TDS_BIAS            = _get(new, "parser.tds_bias",         2)
     JSON_INDENT         = _get(new, "output.json_indent",      2)
-    INCLUDE_RAW_TEXT    = _get(new, "output.include_raw_text", False)
     APP_HOST            = _get(new, "app.host",                "127.0.0.1")
     APP_PORT            = _get(new, "app.port",                8000)
 
@@ -117,7 +115,6 @@ MAX_RETRIES: int         = _get(_cfg, "parser.max_retries",      1)
 TDS_BIAS: int            = _get(_cfg, "parser.tds_bias",         2)
 
 JSON_INDENT: int         = _get(_cfg, "output.json_indent",      2)
-INCLUDE_RAW_TEXT: bool   = _get(_cfg, "output.include_raw_text", False)
 
 APP_HOST: str            = _get(_cfg, "app.host",                "127.0.0.1")
 APP_PORT: int            = _get(_cfg, "app.port",                8000)

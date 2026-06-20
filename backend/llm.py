@@ -8,6 +8,7 @@ at call time so that saving Settings takes effect without a restart.
 
 import hashlib
 import json
+import logging
 import re
 import threading
 from typing import Any, Dict, List, Optional
@@ -16,6 +17,8 @@ import httpx
 
 import config as cfg
 from cache import InMemoryCache, cached_llm_response, store_llm_response
+
+logger = logging.getLogger(__name__)
 
 # Short TTL cache for health/model-list results (auto-expires every 30s)
 _model_list_cache = InMemoryCache(maxsize=4, ttl=30)
@@ -114,7 +117,7 @@ class OllamaClient:
                     return result
                 return data
         except Exception as e:
-            print(f"[LLM] Generation error: {e}")
+            logger.error("Generation error: %s", e)
         return None
 
     def close(self) -> None:
