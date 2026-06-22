@@ -3,11 +3,14 @@ parser.py — PDF text extraction using pdfplumber (primary) and pymupdf (fallba
 Adapted from Rlresearchassistant for standalone use.
 """
 
+import logging
 import re
 from typing import Any, Dict, List
 
 import pdfplumber
 import fitz  # pymupdf
+
+logger = logging.getLogger(__name__)
 
 
 def extract_text(pdf_path: str) -> List[Dict[str, Any]]:
@@ -31,7 +34,7 @@ def extract_text(pdf_path: str) -> List[Dict[str, Any]]:
                             "page": page_num,
                         })
     except Exception as e:
-        print(f"[PARSER] pdfplumber error on {pdf_path}: {e}")
+        logger.warning("pdfplumber error on %s: %s", pdf_path, e)
         chunks = _fallback_pymupdf(pdf_path)
     return chunks
 
@@ -50,7 +53,7 @@ def _fallback_pymupdf(pdf_path: str) -> List[Dict[str, Any]]:
                 })
         doc.close()
     except Exception as e:
-        print(f"[PARSER] pymupdf error on {pdf_path}: {e}")
+        logger.warning("pymupdf error on %s: %s", pdf_path, e)
     return chunks
 
 

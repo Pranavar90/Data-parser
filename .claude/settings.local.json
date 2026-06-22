@@ -6,7 +6,8 @@
       "Bash(xargs grep:*)",
       "WebFetch(domain:www.planetmatlabs.com)",
       "WebFetch(domain:www.linkedin.com)",
-      "WebFetch(domain:brandfetch.com)"
+      "WebFetch(domain:brandfetch.com)",
+      "Bash(git:*)"
     ]
   }
 }

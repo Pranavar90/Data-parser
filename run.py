@@ -5,6 +5,7 @@ Usage:
     python run.py
 """
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -20,6 +21,13 @@ os.chdir(BACKEND)
 
 import config as cfg
 import uvicorn
+
+# Configure logging for all backend modules
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 if __name__ == "__main__":
     print()

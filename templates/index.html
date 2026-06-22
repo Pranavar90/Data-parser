@@ -863,6 +863,81 @@ body::after {
 #toast.error { border-left: 3px solid var(--red); color: var(--red); }
 
 /* ── Detail modal ───────────────────────────────────────────────────────── */
+/* ── New-batch modal ─────────────────────────────────────────────────────── */
+.nb-modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.72);
+  align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.nb-modal-overlay.open { display: flex; }
+.nb-modal-box {
+  width: min(520px, 94vw);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xl);
+  display: flex; flex-direction: column;
+  box-shadow: 0 32px 96px rgba(0,0,0,0.7), 0 0 0 1px rgba(99,102,241,0.12);
+  animation: modalIn 0.25s var(--ease-spring) both;
+  overflow: hidden;
+}
+.nb-modal-header {
+  display: flex; align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+.nb-modal-title { font-size: 13px; font-weight: 700; color: var(--text-primary); flex: 1; }
+.nb-drop-zone {
+  margin: 16px 18px 0;
+  border: 1.5px dashed var(--border-accent);
+  border-radius: var(--r-lg);
+  background: var(--accent-bg);
+  padding: 28px 16px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: pointer;
+  transition: border-color var(--t-mid), background var(--t-mid);
+  text-align: center;
+}
+.nb-drop-zone.drag-over {
+  border-color: var(--accent-bright);
+  background: rgba(99,102,241,0.14);
+}
+.nb-drop-zone h3 { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.nb-drop-zone p  { font-size: 11px; color: var(--text-muted); }
+.nb-browse-row {
+  display: flex; gap: 8px; margin-top: 4px;
+}
+.nb-file-list {
+  margin: 12px 18px 0;
+  max-height: 130px; overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-size: 11px; font-family: var(--font-mono);
+  color: var(--text-secondary);
+  display: none;
+}
+.nb-file-list.has-files { display: block; }
+.nb-file-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.nb-file-item:last-child { border-bottom: none; }
+.nb-file-item-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nb-file-count {
+  font-size: 11px; color: var(--text-muted);
+  margin: 8px 18px 0;
+  font-family: var(--font-mono);
+}
+.nb-modal-footer {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 14px 18px;
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .modal-overlay {
   display: none; position: fixed; inset: 0; z-index: 100;
   background: rgba(0,0,0,0.80);
@@ -1396,6 +1471,50 @@ body::after {
     </div>
     <div class="modal-tabs" id="modal-tabs"></div>
     <div class="modal-body" id="modal-panels"></div>
+  </div>
+</div>
+
+<!-- New-batch modal -->
+<div class="nb-modal-overlay" id="nb-modal" onclick="nbModalClose(event)">
+  <div class="nb-modal-box" onclick="event.stopPropagation()"
+       ondragover="nbOnDragOver(event)" ondragleave="nbOnDragLeave(event)" ondrop="nbOnDrop(event)">
+    <div class="nb-modal-header">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent-bright)" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span class="nb-modal-title">New Batch</span>
+      <button class="btn btn-ghost btn-icon btn-sm" onclick="nbModalClose()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="nb-drop-zone" id="nb-drop-zone" onclick="document.getElementById('nb-file-inp').click()">
+      <svg width="36" height="36" viewBox="0 0 52 52" fill="none">
+        <rect x="8" y="4" width="28" height="36" rx="3" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.6)" stroke-width="1.5"/>
+        <rect x="14" y="10" width="28" height="36" rx="3" fill="rgba(99,102,241,0.10)" stroke="rgba(99,102,241,0.4)" stroke-width="1.5"/>
+        <path d="M34 28 L34 38 M30 34 L34 38 L38 34" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h3>Drop PDFs or folders here</h3>
+      <p>TDS sheets, research papers, nested folders</p>
+      <div class="nb-browse-row" onclick="event.stopPropagation()">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('nb-file-inp').click()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Browse Files
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('nb-folder-inp').click()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Browse Folder
+        </button>
+      </div>
+    </div>
+    <div class="nb-file-count" id="nb-file-count" style="display:none"></div>
+    <div class="nb-file-list" id="nb-file-list"></div>
+    <div class="nb-modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="nbModalClose()">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="nb-parse-btn" onclick="nbStartParse()" disabled>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Parse
+      </button>
+    </div>
+    <input type="file" id="nb-file-inp" multiple accept=".pdf" style="display:none" onchange="nbOnFileInput(this.files, false)" />
+    <input type="file" id="nb-folder-inp" multiple webkitdirectory style="display:none" onchange="nbOnFileInput(this.files, true)" />
   </div>
 </div>
 
@@ -1947,20 +2066,119 @@ function renderResultCards(results, errors) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// NEW BATCH
+// NEW BATCH — opens a modal so the user can pick files without losing
+// the current done-view in the background
 // ══════════════════════════════════════════════════════════════════════════
+let _nbFiles = []; // {file, relPath}
+
 function newBatch() {
-  S.uploadFiles = [];
-  S.mode = 'idle';
+  _nbFiles = [];
+  nbRenderList();
+  document.getElementById('nb-modal').classList.add('open');
+  // reset file inputs so the same files can be re-selected
+  document.getElementById('nb-file-inp').value = '';
+  document.getElementById('nb-folder-inp').value = '';
+}
+
+function nbModalClose(e) {
+  if (e && e.target !== document.getElementById('nb-modal')) return;
+  document.getElementById('nb-modal').classList.remove('open');
+}
+
+function nbOnDragOver(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('nb-drop-zone').classList.add('drag-over');
+}
+function nbOnDragLeave(e) {
+  e.preventDefault();
+  document.getElementById('nb-drop-zone').classList.remove('drag-over');
+}
+function nbOnDrop(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('nb-drop-zone').classList.remove('drag-over');
+  const items = e.dataTransfer.items;
+  if (items) {
+    const entries = [];
+    for (const item of items) {
+      const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+      if (entry) entries.push(entry);
+    }
+    if (entries.length) { nbTraverseEntries(entries, ''); return; }
+  }
+  nbOnFileInput(e.dataTransfer.files, false);
+}
+
+function nbTraverseEntries(entries, basePath) {
+  let pending = entries.length;
+  if (!pending) { nbRenderList(); return; }
+  entries.forEach(entry => {
+    if (entry.isFile) {
+      entry.file(f => {
+        if (f.name.toLowerCase().endsWith('.pdf')) {
+          _nbFiles.push({ file: f, relPath: basePath ? basePath + '/' + f.name : f.name });
+        }
+        if (--pending === 0) nbRenderList();
+      });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      reader.readEntries(sub => {
+        nbTraverseEntries(sub, basePath ? basePath + '/' + entry.name : entry.name);
+        if (--pending === 0) nbRenderList();
+      });
+    } else {
+      if (--pending === 0) nbRenderList();
+    }
+  });
+}
+
+function nbOnFileInput(files, isFolder) {
+  for (const f of files) {
+    if (f.name.toLowerCase().endsWith('.pdf')) {
+      let rel = isFolder && f.webkitRelativePath ? f.webkitRelativePath : f.name;
+      _nbFiles.push({ file: f, relPath: rel });
+    }
+  }
+  nbRenderList();
+}
+
+function nbRenderList() {
+  const list = document.getElementById('nb-file-list');
+  const count = document.getElementById('nb-file-count');
+  const btn   = document.getElementById('nb-parse-btn');
+  if (!_nbFiles.length) {
+    list.className = 'nb-file-list';
+    list.innerHTML = '';
+    count.style.display = 'none';
+    btn.disabled = true;
+    return;
+  }
+  count.style.display = '';
+  count.textContent = _nbFiles.length + ' PDF' + (_nbFiles.length !== 1 ? 's' : '') + ' selected';
+  list.className = 'nb-file-list has-files';
+  list.innerHTML = _nbFiles.slice(0, 80).map(f =>
+    `<div class="nb-file-item">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--accent-bright)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span class="nb-file-item-name">${esc(f.relPath)}</span>
+    </div>`
+  ).join('') + (_nbFiles.length > 80 ? `<div class="nb-file-item" style="color:var(--text-muted)">…and ${_nbFiles.length - 80} more</div>` : '');
+  btn.disabled = false;
+}
+
+async function nbStartParse() {
+  if (!_nbFiles.length) return;
+  document.getElementById('nb-modal').classList.remove('open');
+
+  // Reset all state for the new batch
+  S.uploadFiles = _nbFiles.slice();
+  _nbFiles = [];
   S.results = []; S.tdsCount = 0; S.paperCount = 0; S.totalProps = 0;
-  renderStageList();
-  updateStatCards({ total:0, tds:0, papers:0, done:0 });
   document.getElementById('s-props').textContent = '0';
   document.getElementById('save-ok').style.display = 'none';
-  setAppState('idle');
-  const btn = document.getElementById('parse-btn');
-  if (btn) btn.disabled = true;
-  updateStatusBar();
+  renderStageList();
+  updateStatCards({ total: S.uploadFiles.length, tds: 0, papers: 0, done: 0 });
+
+  // Kick off parsing directly
+  startParse();
 }
 
 // ══════════════════════════════════════════════════════════════════════════

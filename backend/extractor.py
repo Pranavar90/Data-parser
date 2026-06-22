@@ -13,11 +13,14 @@ Schema returned by extract_from_text():
 """
 
 import hashlib
+import logging
 from typing import Any, Dict, List, Optional
 
 import config as cfg
 from cache import cached_llm_response, store_llm_response
 from llm import get_client
+
+logger = logging.getLogger(__name__)
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
@@ -283,24 +286,24 @@ def extract_from_text(text: str, doc_type: Optional[str] = None) -> Dict[str, An
     max_chars = cfg.TDS_EXTRACT_CHARS if doc_type == "tds" else cfg.PAPER_EXTRACT_CHARS
     truncated = text[:max_chars]
 
-    cache_key = hashlib.sha256(f"{doc_type}:{truncated}".encode()).hexdigest()
+    cache_key = hashlib.sha256(f"{cfg.LLM_MODEL}:{doc_type}:{truncated}".encode()).hexdigest()
     cached = cached_llm_response(f"extract:{cache_key}")
     if cached is not None:
-        print(f"[EXTRACTOR] Cache HIT ({doc_type}, {len(truncated)} chars)")
+        logger.info("Cache HIT (%s, %d chars)", doc_type, len(truncated))
         return cached
 
     chunks = _split_chunks(truncated)
     if not chunks:
         return _empty_result(doc_type, "No processable text")
 
-    print(f"[EXTRACTOR] {doc_type.upper()} | {len(text)} chars → {len(truncated)} chars | {len(chunks)} chunk(s)")
+    logger.info("%s | %d chars → %d chars | %d chunk(s)", doc_type.upper(), len(text), len(truncated), len(chunks))
 
     system = SYSTEM_PROMPT_TDS if doc_type == "tds" else SYSTEM_PROMPT_PAPER
     client = get_client()
     results = []
 
     for i, chunk in enumerate(chunks):
-        print(f"[EXTRACTOR] Chunk {i + 1}/{len(chunks)}...")
+        logger.info("Chunk %d/%d...", i + 1, len(chunks))
         parsed = None
         current = chunk
         for attempt in range(cfg.MAX_RETRIES + 1):
@@ -319,10 +322,10 @@ def extract_from_text(text: str, doc_type: Optional[str] = None) -> Dict[str, An
                 break
         if parsed:
             n = len(parsed.get("properties", [])) + len(parsed.get("material_properties_mentioned", []))
-            print(f"[EXTRACTOR] Chunk {i + 1} OK — {n} props")
+            logger.info("Chunk %d OK — %d props", i + 1, n)
             results.append(parsed)
         else:
-            print(f"[EXTRACTOR] Chunk {i + 1} FAILED")
+            logger.warning("Chunk %d FAILED", i + 1)
 
     if not results:
         return _empty_result(doc_type, "All LLM calls failed — check Ollama is running")
