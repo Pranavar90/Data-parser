@@ -1380,7 +1380,7 @@ body::after {
     <div class="status-left">
       <div class="status-item" id="status-ollama">
         <span class="dot" id="status-ollama-dot"></span>
-        <span>Ollama:</span>
+        <span>LLM:</span>
         <span class="status-val" id="status-ollama-model">--</span>
       </div>
       <div class="status-divider"></div>
@@ -1430,9 +1430,9 @@ body::after {
       </button>
     </div>
     <div class="drawer-body">
-      <div class="field"><label class="field-label">Ollama URL</label><input class="field-input" id="s-url" placeholder="http://127.0.0.1:11434" /></div>
+      <div class="field"><label class="field-label">LLM API URL</label><input class="field-input" id="s-url" placeholder="http://127.0.0.1:11434" /></div>
       <div class="field"><label class="field-label">Extraction Model</label><select class="field-select" id="s-model"><option>Loading...</option></select></div>
-      <div class="field"><label class="field-label">Ollama Timeout (seconds)</label><input class="field-input" id="s-timeout" type="number" min="30" max="600" /></div>
+      <div class="field"><label class="field-label">LLM Timeout (seconds)</label><input class="field-input" id="s-timeout" type="number" min="30" max="600" /></div>
       <div class="field"><label class="field-label">TDS Max Chars</label><input class="field-input" id="s-tds-chars" type="number" min="1000" max="50000" step="500" /></div>
       <div class="field"><label class="field-label">Paper Max Chars</label><input class="field-input" id="s-paper-chars" type="number" min="1000" max="50000" step="500" /></div>
       <div class="field"><label class="field-label">Chunk Size (chars)</label><input class="field-input" id="s-chunk" type="number" min="500" max="16000" step="500" /></div>
@@ -1716,11 +1716,11 @@ async function checkHealth() {
     const d = await fetch('/api/health').then(r=>r.json());
     const badge = document.getElementById('ollama-badge');
     const model = document.getElementById('ollama-model');
-    badge.className = d.ollama ? 'ollama-badge ok' : 'ollama-badge err';
-    model.textContent = d.ollama ? (d.active_model || 'Connected') : 'Offline';
+    badge.className = d.llm ? 'ollama-badge ok' : 'ollama-badge err';
+    model.textContent = d.llm ? (d.active_model || 'Connected') : 'Offline';
     const dotEl = document.getElementById('status-ollama-dot');
     const modelEl = document.getElementById('status-ollama-model');
-    if (d.ollama) {
+    if (d.llm) {
       dotEl.className = 'dot green';
       modelEl.textContent = d.active_model || 'Connected';
     } else {
@@ -1832,8 +1832,8 @@ function renderStageList() {
 function clearAll() {
   S.uploadFiles = [];
   renderStageList();
-  updateStatCards({ total:0, tds:0, papers:0, done:0 });
-  document.getElementById('s-props').textContent = '0';
+  updateStatCards({ total: S.results.length, tds: S.tdsCount, papers: S.paperCount, done: S.results.length });
+  document.getElementById('s-props').textContent = String(S.totalProps || 0);
   updateStatusBar();
 }
 
@@ -1896,7 +1896,8 @@ async function startParse() {
   renderStageList();
 
   S.mode = 'parsing';
-  S.results = []; S.jobDone = 0; S.tdsCount = 0; S.paperCount = 0; S.totalProps = 0;
+  // Preserve previous batch results — new results will be appended via S.results.push()
+  S.jobDone = 0;
   const btn = document.getElementById('parse-btn');
   if (btn) btn.disabled = true;
   setAppState('parsing');
@@ -2020,7 +2021,8 @@ async function onDone(summary) {
 
 function renderResultCards(results, errors) {
   const grid = document.getElementById('result-grid');
-  grid.innerHTML = '';
+  // Append new results — don't clear previous batch cards
+  const startIdx = grid.children.length;
   results.forEach((r, idx) => {
     const d = r.data || {};
     const dtype = d.doc_type || 'unknown';
@@ -2168,16 +2170,14 @@ async function nbStartParse() {
   if (!_nbFiles.length) return;
   document.getElementById('nb-modal').classList.remove('open');
 
-  // Reset all state for the new batch
+  // Keep previous results — new batch results will be appended
   S.uploadFiles = _nbFiles.slice();
   _nbFiles = [];
-  S.results = []; S.tdsCount = 0; S.paperCount = 0; S.totalProps = 0;
-  document.getElementById('s-props').textContent = '0';
   document.getElementById('save-ok').style.display = 'none';
   renderStageList();
-  updateStatCards({ total: S.uploadFiles.length, tds: 0, papers: 0, done: 0 });
+  updateStatCards({ total: S.uploadFiles.length + S.results.length, tds: S.tdsCount, papers: S.paperCount, done: S.results.length });
 
-  // Kick off parsing directly
+  // Kick off parsing — results will accumulate in S.results
   startParse();
 }
 
@@ -2404,8 +2404,8 @@ function closeSettings(e) {
 async function loadSettings() {
   try {
     const d = await fetch('/api/config').then(r=>r.json());
-    document.getElementById('s-url').value         = d.ollama?.base_url || '';
-    document.getElementById('s-timeout').value     = d.ollama?.timeout || 300;
+    document.getElementById('s-url').value         = d.llm?.base_url || '';
+    document.getElementById('s-timeout').value     = d.llm?.timeout || 300;
     document.getElementById('s-tds-chars').value   = d.parser?.tds_max_chars || 7000;
     document.getElementById('s-paper-chars').value = d.parser?.paper_max_chars || 12000;
     document.getElementById('s-chunk').value       = d.parser?.chunk_size || 4000;
@@ -2420,7 +2420,7 @@ async function saveSettings() {
   try {
     const current = await fetch('/api/config').then(r=>r.json());
     const cfg = {
-      ollama: { ...current.ollama, base_url: document.getElementById('s-url').value.trim(), model: document.getElementById('s-model').value, timeout: parseInt(document.getElementById('s-timeout').value) },
+      llm: { ...current.llm, base_url: document.getElementById('s-url').value.trim(), model: document.getElementById('s-model').value, timeout: parseInt(document.getElementById('s-timeout').value) },
       parser: { ...current.parser, tds_max_chars: parseInt(document.getElementById('s-tds-chars').value), paper_max_chars: parseInt(document.getElementById('s-paper-chars').value), chunk_size: parseInt(document.getElementById('s-chunk').value), chunk_overlap: parseInt(document.getElementById('s-overlap').value) },
       output: { ...current.output, json_indent: parseInt(document.getElementById('s-indent').value) },
       app: current.app,

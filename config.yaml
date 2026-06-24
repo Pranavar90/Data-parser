@@ -1,10 +1,6 @@
-ollama:
-  base_url: http://127.0.0.1:11434
+llm:
   model: qwen2.5:3b-instruct-q4_K_S
   timeout: 300
-  num_gpu: 99
-  num_ctx: 8192
-  keep_alive: 15m
 parser:
   tds_max_chars: 7000
   paper_max_chars: 12000
@@ -14,7 +10,6 @@ parser:
   tds_bias: 2
 output:
   json_indent: 2
-  include_raw_text: false
 app:
   host: 127.0.0.1
   port: 8000

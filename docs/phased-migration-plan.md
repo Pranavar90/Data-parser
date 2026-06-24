@@ -11,76 +11,77 @@
 
 ### The Problem
 
-The current parser is **text-only**. It uses pdfplumber to extract the text layer from PDFs and feeds that raw text to an LLM. This fails silently on:
-- Scanned PDFs (no text layer at all)
-- Image-embedded tables (common in manufacturer TDS documents)
+The current parser is **text-only**. It uses pdfplumber to extract the text layer from PDFs and feeds that raw text to an LLM. This works well for TDS documents (clean, digital, well-structured manufacturer PDFs) but fails on research papers which commonly have:
+- Scanned pages (no text layer at all)
 - Multi-column layouts where text extraction scrambles column order
-- PDFs with CID-encoded fonts or non-standard encodings
+- Complex figures, charts, and image-embedded tables
+- Non-standard encodings from academic publishers
 
-For a 100K document corpus, an estimated 20-30% of documents fall into these failure categories.
+### Chosen Strategy: Doc-Type Routed — TDS via LLM, Papers via VLM
 
-### Chosen Strategy: Text-First with VLM Fallback (Strategy A)
+The routing decision is based on **document type**, not text quality heuristics:
 
-Three strategies were evaluated:
+| Document Type | Extraction Path | Reason |
+|---|---|---|
+| **TDS** | Text path (pdfplumber + LLM) | Clean digital PDFs from manufacturers. Text extraction works reliably. Cheaper. |
+| **Paper** | VLM path (page images + vision model) | Complex layouts, scanned pages, multi-column. VLM handles these natively. |
 
-| Strategy | Cost (100K docs) | Accuracy | Complexity |
-|---|---|---|---|
-| **A: Text-first + VLM fallback** | ~$9,600 | High (with re-queue) | Medium |
-| B: Pure VLM (all pages as images) | ~$30,000 | Uniformly high | Low |
-| C: Parallel text+image fusion | ~$32,000 | Highest | High |
+**Why not VLM for everything?**
+- At ~50K TDS documents, VLM would cost ~$12,500 extra for no quality gain
+- pdfplumber + a good LLM (Bedrock Claude) already extracts TDS properties accurately
+- TDS documents are standardized by manufacturers — predictable structure
 
-**Strategy A selected** because:
-1. 70-80% of TDS documents are clean digital PDFs — paying VLM rates for all of them is wasteful
-2. Existing text extraction code (`parser.py`, chunking, merge) is proven and reusable
-3. LiteLLM makes routing between text-LLM and VLM models a config change
-4. Natural upgrade path to Strategy C per-document if needed
-5. Confidence-based re-queue catches quality gate misses automatically
+**Why not text-only for everything?**
+- Research papers have diverse layouts that break text extraction
+- Multi-column text gets concatenated incorrectly
+- Figures and embedded tables are invisible to text parsers
+- Academic PDFs from different publishers have wildly different encoding quality
 
-### How Strategy A Works
+**Cost estimate at 100K documents (assuming ~50/50 TDS/Paper split):**
+- TDS text path: 50,000 docs x ~$0.03/doc = ~$1,500
+- Paper VLM path: 50,000 docs x ~$0.25/doc = ~$12,500
+- **Total: ~$14,000** for initial backlog processing
+
+### How It Works
 
 ```
 PDF arrives from S3
   │
   ▼
-Step 1: Try pdfplumber text extraction (existing parser.py)
+Step 1: Detect document type
+  │     Uses existing detect_document_type() — keyword-based classifier
+  │     Or: S3 metadata prefix/tag (s3://bucket/tds/... vs s3://bucket/papers/...)
   │
-  ▼
-Step 2: Quality Gate — assess extracted text
-  │
-  ├─ PASS (chars_per_page > 50, garbled_ratio < 15%, sufficient content)
+  ├─ TDS
   │   │
   │   ▼
-  │   TEXT PATH (existing pipeline)
+  │   TEXT PATH (existing pipeline, upgraded model)
+  │   → pdfplumber text extraction (parser.py — as-is)
   │   → chunk text (4000 chars, 300 overlap)
   │   → send each chunk to LLM via LiteLLM (model="extraction-primary")
   │   → merge chunk results
-  │   → if extraction_confidence < 0.3 → RE-QUEUE for VLM
+  │   → validate against Pydantic TDS schema
   │
-  └─ FAIL (low chars, scanned, garbled, or S3 metadata says scanned)
+  └─ Paper
       │
       ▼
       VLM PATH (new)
       → render pages as images (pymupdf, 200 DPI, JPEG, max 1536px)
       → send page images to VLM via LiteLLM (model="extraction-vlm")
       → merge page-level results
+      → validate against Pydantic Paper schema
 ```
 
-### Quality Gate Logic
+### Document Type Detection
 
-```
-assess_text_quality(chunks, pdf_path) → "text" | "vlm"
+Two methods, in priority order:
 
-Hard rules (instant VLM):
-  - total extracted chars < 100            → VLM (basically empty)
-  - chars per page < 50                    → VLM (scanned document)
-  - S3 metadata x-amz-meta-scanned: true  → VLM (upstream override)
+1. **S3 key prefix** (most reliable): If the upstream Drive → S3 sync organizes files by type:
+   - `s3://bucket/tds/*.pdf` → TDS
+   - `s3://bucket/papers/*.pdf` → Paper
+   - Zero ambiguity, no classification needed
 
-Soft rules (scoring):
-  - garbled character ratio > 15%          → VLM (encoding problems)
-  - pdfplumber raised exception            → VLM (already using pymupdf fallback)
-
-Default: TEXT (trust the text extraction)
-```
+2. **Existing `detect_document_type()`** (fallback): The keyword classifier in `extractor.py` (90+ TDS keywords, 60+ paper keywords, TDS_BIAS=2). Works when S3 prefix is not available or mixed.
 
 ### Image Rendering Pipeline
 
@@ -96,19 +97,24 @@ extract_as_images(pdf_path, dpi=200, max_dim=1536, fmt="jpeg", quality=85)
 - **JPEG quality 85**: 3-5x smaller than PNG, visually lossless for text documents.
 - **Memory**: ~200KB per page at 200 DPI JPEG. 50-page doc = ~10MB. Fine for EC2.
 
-### System Prompts for VLM
+### System Prompts
 
-The existing SYSTEM_PROMPT_TDS and SYSTEM_PROMPT_PAPER are text-oriented. VLM variants are needed:
+**TDS prompt (SYSTEM_PROMPT_TDS)** — unchanged. Already works well for text-based extraction. Will benefit from the model upgrade (3b → Bedrock Claude) without prompt changes.
+
+**Paper VLM prompt (SYSTEM_PROMPT_PAPER_VLM)** — new variant of SYSTEM_PROMPT_PAPER adapted for image input:
 
 **VLM prompt additions:**
-- "You are looking at a page image from a [Technical Data Sheet / Research Paper]."
+- "You are looking at a page image from a research paper."
 - "Read all tables carefully, including column headers, row labels, and units."
-- "Extract every numerical value visible in the image."
-- Output JSON schema remains **identical** to text prompts (critical for merge compatibility)
+- "Pay attention to multi-column layouts — extract from all columns."
+- "Extract data from figures and charts where numerical values are visible."
+- Output JSON schema remains **identical** to text SYSTEM_PROMPT_PAPER (critical for merge compatibility)
 
-**VLM prompt removals:**
+**VLM prompt removals (vs text version):**
 - CID glyph handling notes (irrelevant for image input)
 - Text-specific extraction artifacts
+
+**Note:** SYSTEM_PROMPT_TDS_VLM is NOT needed — TDS documents always use the text path.
 
 ### Merge Strategy for Page-Level VLM Results
 
@@ -119,16 +125,18 @@ When the same property appears on multiple pages with **different values**:
 - If confidence is similar, keep both with page annotation in the context field
 - Dedup key remains `name-value` (existing logic)
 
-### Confidence-Based Re-Queue
+### Confidence-Based Re-Queue (TDS only)
 
-Safety net for quality gate misses:
+Safety net for the rare TDS document where text extraction fails unexpectedly:
 
 ```
-if extraction_result.extraction_confidence < 0.3 and extraction_path == "text":
+if extraction_result.extraction_confidence < 0.3 and doc_type == "tds":
     → push SQS message back with attribute force_vlm=true
     → VLM path processes on next consumption
     → prevents silent low-quality extractions
 ```
+
+This should be rare (<5% of TDS documents). Papers always go through VLM, so no re-queue needed for them.
 
 ---
 
@@ -215,35 +223,32 @@ litellm:
 
 ---
 
-### Phase 2: VLM Extraction Path
+### Phase 2: VLM Extraction Path (Papers Only)
 
-**Goal**: Add image-based extraction alongside existing text path.
+**Goal**: Add image-based extraction for research papers. TDS documents continue using the text path from Phase 1.
 
 **Deliverables:**
-- `parser.py` — new `extract_as_images()` and `assess_text_quality()` functions
-- `extractor.py` — new `extract_from_images()` function and VLM prompt variants
+- `parser.py` — new `extract_as_images()` function (renders PDF pages to base64 JPEG)
+- `extractor.py` — new `SYSTEM_PROMPT_PAPER_VLM` and `extract_from_images()` function
 - `extractor.py` — enhanced `_merge()` for page-level dedup with confidence resolution
-- Routing logic in `_process_file()` (or its successor)
+- Doc-type routing logic in `_process_file()` (or its successor)
 
-**New functions in `parser.py`:**
+**New function in `parser.py`:**
 
 ```python
 extract_as_images(pdf_path, dpi=200, max_dim=1536, fmt="jpeg", quality=85)
   → List[{page, image_b64, width, height, mime}]
-
-assess_text_quality(chunks, pdf_path)
-  → "text" | "vlm"
 ```
 
 **New in `extractor.py`:**
 
 ```python
-SYSTEM_PROMPT_TDS_VLM = "..."   # VLM variant of TDS prompt
-SYSTEM_PROMPT_PAPER_VLM = "..." # VLM variant of paper prompt
+SYSTEM_PROMPT_PAPER_VLM = "..."  # VLM variant of paper prompt (image-aware)
+# Note: NO TDS VLM prompt needed — TDS always uses text path
 
-extract_from_images(images: List[dict], doc_type: str) -> dict
-  # Sends page images to VLM via LiteLLM
-  # Returns same schema as extract_from_text()
+extract_from_images(images: List[dict]) -> dict
+  # Sends page images to VLM via LiteLLM (model="extraction-vlm")
+  # Returns same schema as extract_from_text() for paper doc_type
 ```
 
 **New in `llm.py`:**
@@ -257,39 +262,41 @@ generate_with_images(model, messages_with_images, ...)
 **Updated routing in `_process_file()` (or successor):**
 
 ```python
-def process_document(pdf_path):
-    # Step 1: Try text extraction
+def process_document(pdf_path, force_vlm=False):
+    # Step 1: Detect document type
+    #   Option A: from S3 key prefix (tds/ vs papers/)
+    #   Option B: pdfplumber text → detect_document_type()
     chunks = extract_text(pdf_path)
     full_text = join(chunks)
+    doc_type = detect_document_type(full_text)
 
-    # Step 2: Quality gate
-    path = assess_text_quality(chunks, pdf_path)
-
-    # Step 3: Route
-    if path == "text":
-        raw = extract_from_text(full_text)
+    # Step 2: Route by document type
+    if doc_type == "tds" and not force_vlm:
+        # TEXT PATH — existing pipeline with better model
+        raw = extract_from_text(full_text, doc_type="tds")
         if raw.get("extraction_confidence", 0) < 0.3:
-            # Re-queue for VLM (in SQS consumer, this pushes back to queue)
-            raise LowConfidenceError(raw)
+            raise LowConfidenceError(raw)  # re-queue for VLM
     else:
+        # VLM PATH — render pages as images, send to vision model
         images = extract_as_images(pdf_path)
         raw = extract_from_images(images)
 
-    # Step 4: Normalize + validate against Pydantic schema
+    # Step 3: Normalize + validate against Pydantic schema
     return build_extraction_record(raw, pdf_path)
 ```
 
 **Files:**
-- Modified: `backend/parser.py` (add image rendering + quality assessment)
-- Modified: `backend/extractor.py` (add VLM extraction + prompt variants + merge enhancement)
+- Modified: `backend/parser.py` (add `extract_as_images()`)
+- Modified: `backend/extractor.py` (add `SYSTEM_PROMPT_PAPER_VLM`, `extract_from_images()`, enhance `_merge()`)
 - Modified: `backend/llm.py` (add multimodal message support)
-- Modified: `backend/main.py` or new `backend/processor.py` (routing logic)
+- Modified: `backend/main.py` or new `backend/processor.py` (doc-type routing logic)
 
 **Verification:**
-1. Test with clean digital TDS → should take text path, same quality as Phase 1
-2. Test with scanned PDF → should route to VLM, produce valid extraction
-3. Test with complex-table PDF → quality gate should detect and route to VLM
-4. Test merge of page-level VLM results → dedup works correctly
+1. Test with clean digital TDS → text path, same quality as Phase 1
+2. Test with research paper → VLM path, pages rendered and sent as images
+3. Test with multi-column paper → VLM extracts from all columns correctly
+4. Test merge of page-level VLM results → dedup works, no duplicate properties
+5. Test TDS with confidence < 0.3 → re-queued and processed via VLM
 
 ---
 
@@ -331,17 +338,22 @@ while True:
             custom=head.get("Metadata", {}),
         )
 
-        # 3. Check for force_vlm attribute (from re-queue)
+        # 3. Check for force_vlm attribute (from TDS re-queue on low confidence)
         force_vlm = msg.get("MessageAttributes", {}).get("force_vlm", {}).get("StringValue") == "true"
 
-        # 4. Write PDF to temp file (needed for pymupdf/pdfplumber)
+        # 4. Detect doc type from S3 key prefix (if available)
+        doc_type_hint = "tds" if "/tds/" in s3_key.lower() else "paper" if "/paper" in s3_key.lower() else None
+
+        # 5. Write PDF to temp file (needed for pymupdf/pdfplumber)
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp.write(pdf_bytes)
             tmp_path = tmp.name
 
         try:
-            # 5. Process document
-            result = process_document(tmp_path, force_vlm=force_vlm)
+            # 6. Process document — routes by doc type:
+            #    TDS → text path (pdfplumber + LLM)
+            #    Paper → VLM path (page images + vision model)
+            result = process_document(tmp_path, doc_type_hint=doc_type_hint, force_vlm=force_vlm)
 
             # 6. Enrich with S3 metadata
             record = ExtractionRecord(extraction=result, s3_metadata=s3_meta, ...)
@@ -460,7 +472,7 @@ while True:
 - CloudWatch custom metrics:
   - `ExtractionSuccess`, `ExtractionFailure` (count)
   - `ExtractionDuration` (milliseconds)
-  - `TextPathUsed`, `VLMPathUsed` (count)
+  - `TDSTextPathUsed`, `PaperVLMPathUsed`, `TDSRequeued` (count)
   - `CacheHitRate` (percentage)
   - `SQSMessagesInFlight` (gauge)
 - CloudWatch Alarms:
@@ -489,7 +501,8 @@ while True:
 2. Upload 10 test PDFs to S3
 3. Monitor CloudWatch dashboard — all 10 processed, metrics visible
 4. Kill consumer process → systemd restarts it → messages resume processing
-5. Upload a scanned PDF → VLM path triggered → correct extraction
+5. Upload a research paper PDF → VLM path triggered → correct extraction
+6. Upload a TDS PDF → text path used → correct extraction
 6. Check DLQ is empty
 
 ---
@@ -509,10 +522,10 @@ while True:
 - Upload all 100K existing documents to S3 (batch upload)
 - SQS consumer processes the backlog at sustained throughput
 - Monitor via CloudWatch dashboard
-- Estimated time: depends on LLM throughput
-  - At 10 docs/min (text path): ~116 hours for 70K text-path docs
-  - At 3 docs/min (VLM path): ~166 hours for 30K VLM-path docs
-  - Total: ~2 weeks with single consumer, ~3-4 days with increased concurrency
+- Estimated time: depends on LLM throughput (assuming ~50/50 TDS/Paper split)
+  - At 10 docs/min (TDS text path): ~83 hours for 50K TDS docs
+  - At 3 docs/min (Paper VLM path): ~278 hours for 50K paper docs
+  - Total: ~2-3 weeks with single consumer, ~5-7 days with increased concurrency
 
 **6c. Steady-state monitoring:**
 - Drive sync runs continuously

@@ -1,0 +1,794 @@
+{
+  "Tensile Strength": {
+    "aliases": [
+      "UTS",
+      "σ_UTS",
+      "ultimate tensile strength",
+      "tensile str.",
+      "tensile strength (mpa)",
+      "tensile stress at break",
+      "tensile strength (psi)",
+      "ultimate tensile stress",
+      "tensille strength",
+      "Zugfestigkeit",
+      "Reißfestigkeit"
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_001"
+  },
+  "Flexural Strength": {
+    "aliases": [
+      "bending strength",
+      "flexural str.",
+      "flex strength",
+      "flexural strength (mpa)",
+      "3-point bending strength",
+      "flexural stress at break"
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_002"
+  },
+  "Flexural Modulus": {
+    "aliases": [
+      "bending modulus",
+      "flex modulus",
+      "flexural mod.",
+      "flexural modulus (gpa)",
+      "flexural modulus (mpa)"
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_003"
+  },
+  "Tensile Modulus": {
+    "aliases": [
+      "Young's modulus",
+      "elastic modulus",
+      "E-modulus",
+      "modulus of elasticity",
+      "tensile modulus (gpa)",
+      "tensile modulus (mpa)",
+      "Young's mod."
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_004"
+  },
+  "Elongation at Break": {
+    "aliases": [
+      "elongation",
+      "strain at break",
+      "breaking elongation",
+      "elongation at failure",
+      "elongation at break (%)",
+      "elongation at rupture",
+      "% elongation"
+    ],
+    "category": "mechanical",
+    "unit_family": "percentage",
+    "canonical_id": "mech_005"
+  },
+  "Impact Strength": {
+    "aliases": [
+      "charpy impact",
+      "izod impact",
+      "charpy impact strength",
+      "izod impact strength",
+      "notched impact strength",
+      "impact strength (kj/m2)",
+      "impact resistance",
+      "unnotched impact strength"
+    ],
+    "category": "mechanical",
+    "unit_family": "energy_per_area",
+    "canonical_id": "mech_006"
+  },
+  "Hardness": {
+    "aliases": [
+      "shore hardness",
+      "shore A",
+      "shore D",
+      "rockwell hardness",
+      "vickers hardness",
+      "brinell hardness",
+      "micro hardness",
+      "hardness (shore D)",
+      "hardness (shore A)",
+      "Härte"
+    ],
+    "category": "mechanical",
+    "unit_family": "dimensionless",
+    "canonical_id": "mech_007"
+  },
+  "Compressive Strength": {
+    "aliases": [
+      "compression strength",
+      "compressive str.",
+      "compressive strength (mpa)",
+      "crushing strength",
+      "compresive strength"
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_008"
+  },
+  "Shear Strength": {
+    "aliases": [
+      "shear str.",
+      "interlaminar shear strength",
+      "ILSS",
+      "lap shear strength",
+      "shear strength (mpa)",
+      "short beam shear strength"
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_009"
+  },
+  "Fracture Toughness": {
+    "aliases": [
+      "KIC",
+      "K1C",
+      "K_IC",
+      "critical stress intensity factor",
+      "fracture toughness (mpa√m)",
+      "GIC",
+      "G_IC",
+      "strain energy release rate"
+    ],
+    "category": "mechanical",
+    "unit_family": "stress_intensity",
+    "canonical_id": "mech_010"
+  },
+  "Fatigue Strength": {
+    "aliases": [
+      "fatigue life",
+      "fatigue limit",
+      "endurance limit",
+      "fatigue resistance",
+      "fatigue strength (mpa)",
+      "cyclic fatigue"
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_011"
+  },
+  "Glass Transition Temperature": {
+    "aliases": [
+      "Tg",
+      "glass transition",
+      "glass transition temp",
+      "Tg (DSC)",
+      "glass transition temperature (°c)",
+      "Tg (DMA)",
+      "Tg (dsc)",
+      "Glasumwandlungstemperatur"
+    ],
+    "category": "thermal",
+    "unit_family": "temperature",
+    "canonical_id": "therm_001"
+  },
+  "Melting Temperature": {
+    "aliases": [
+      "Tm",
+      "melting point",
+      "melt point",
+      "melting temp",
+      "melting temperature (°c)",
+      "peak melting temperature",
+      "Tm (DSC)"
+    ],
+    "category": "thermal",
+    "unit_family": "temperature",
+    "canonical_id": "therm_002"
+  },
+  "Heat Deflection Temperature": {
+    "aliases": [
+      "HDT",
+      "heat distortion temperature",
+      "deflection temperature under load",
+      "DTUL",
+      "HDT (°c)",
+      "HDT/A",
+      "HDT/B",
+      "heat deflection temp"
+    ],
+    "category": "thermal",
+    "unit_family": "temperature",
+    "canonical_id": "therm_003"
+  },
+  "Vicat Softening Temperature": {
+    "aliases": [
+      "vicat",
+      "vicat softening point",
+      "vicat softening temp",
+      "VST",
+      "vicat softening temperature (°c)",
+      "vicat A",
+      "vicat B"
+    ],
+    "category": "thermal",
+    "unit_family": "temperature",
+    "canonical_id": "therm_004"
+  },
+  "Coefficient of Thermal Expansion": {
+    "aliases": [
+      "CTE",
+      "thermal expansion",
+      "CLTE",
+      "linear thermal expansion",
+      "CTE (ppm/°c)",
+      "coefficient of linear thermal expansion",
+      "thermal expansion coefficient"
+    ],
+    "category": "thermal",
+    "unit_family": "inverse_temperature",
+    "canonical_id": "therm_005"
+  },
+  "Thermal Conductivity": {
+    "aliases": [
+      "thermal cond.",
+      "heat conductivity",
+      "k-value",
+      "thermal conductivity (w/mk)",
+      "λ",
+      "thermal conductivity (w/m·k)",
+      "thermal conductivty"
+    ],
+    "category": "thermal",
+    "unit_family": "thermal_conductivity",
+    "canonical_id": "therm_006"
+  },
+  "Specific Heat Capacity": {
+    "aliases": [
+      "specific heat",
+      "heat capacity",
+      "Cp",
+      "specific heat capacity (j/gk)",
+      "specific heat capacity (j/kg·k)",
+      "Cp (j/g°c)"
+    ],
+    "category": "thermal",
+    "unit_family": "specific_heat",
+    "canonical_id": "therm_007"
+  },
+  "Decomposition Temperature": {
+    "aliases": [
+      "Td",
+      "onset decomposition",
+      "thermal decomposition temperature",
+      "TGA onset",
+      "decomposition temp",
+      "Td (°c)",
+      "thermal stability",
+      "Temperaturbeständigkeit"
+    ],
+    "category": "thermal",
+    "unit_family": "temperature",
+    "canonical_id": "therm_008"
+  },
+  "Flammability": {
+    "aliases": [
+      "UL94",
+      "UL 94",
+      "flame rating",
+      "flame retardancy",
+      "flammability rating",
+      "fire rating",
+      "V-0",
+      "V-1",
+      "V-2",
+      "HB"
+    ],
+    "category": "thermal",
+    "unit_family": "rating",
+    "canonical_id": "therm_009"
+  },
+  "Limiting Oxygen Index": {
+    "aliases": [
+      "LOI",
+      "oxygen index",
+      "LOI (%)",
+      "limiting oxygen index (%)",
+      "OI"
+    ],
+    "category": "thermal",
+    "unit_family": "percentage",
+    "canonical_id": "therm_010"
+  },
+  "Volume Resistivity": {
+    "aliases": [
+      "electrical resistivity",
+      "bulk resistivity",
+      "resistivity",
+      "volume resistivity (ω·cm)",
+      "volume resistivity (ohm·cm)",
+      "ρv"
+    ],
+    "category": "electrical",
+    "unit_family": "resistivity",
+    "canonical_id": "elec_001"
+  },
+  "Surface Resistivity": {
+    "aliases": [
+      "sheet resistance",
+      "surface resistance",
+      "surface resistivity (ω/sq)",
+      "surface resistivity (ohm/sq)",
+      "ρs"
+    ],
+    "category": "electrical",
+    "unit_family": "resistivity",
+    "canonical_id": "elec_002"
+  },
+  "Dielectric Constant": {
+    "aliases": [
+      "permittivity",
+      "relative permittivity",
+      "dielectric const.",
+      "εr",
+      "Dk",
+      "dielectric constant (1 mhz)",
+      "dielectric constant (1 ghz)",
+      "Er"
+    ],
+    "category": "electrical",
+    "unit_family": "dimensionless",
+    "canonical_id": "elec_003"
+  },
+  "Dielectric Strength": {
+    "aliases": [
+      "breakdown strength",
+      "electric strength",
+      "dielectric strength (kv/mm)",
+      "dielectric strength (v/mil)",
+      "dielectric breakdown strength"
+    ],
+    "category": "electrical",
+    "unit_family": "electric_field",
+    "canonical_id": "elec_004"
+  },
+  "Dissipation Factor": {
+    "aliases": [
+      "loss tangent",
+      "tan δ",
+      "tan delta",
+      "Df",
+      "dielectric loss",
+      "loss factor",
+      "dissipation factor (1 mhz)",
+      "tan d"
+    ],
+    "category": "electrical",
+    "unit_family": "dimensionless",
+    "canonical_id": "elec_005"
+  },
+  "Electrical Conductivity": {
+    "aliases": [
+      "conductivity",
+      "σ",
+      "specific conductance",
+      "electrical conductivity (s/m)",
+      "electrical conductivity (s/cm)",
+      "electical conductivity"
+    ],
+    "category": "electrical",
+    "unit_family": "conductivity",
+    "canonical_id": "elec_006"
+  },
+  "EMI Shielding Effectiveness": {
+    "aliases": [
+      "SE",
+      "shielding effectiveness",
+      "EMI SE",
+      "electromagnetic shielding",
+      "shielding efficiency",
+      "EMI shielding effectiveness (db)",
+      "total SE",
+      "SET"
+    ],
+    "category": "electrical",
+    "unit_family": "decibel",
+    "canonical_id": "elec_007"
+  },
+  "Breakdown Voltage": {
+    "aliases": [
+      "dielectric breakdown voltage",
+      "breakdown voltage (kv)",
+      "electrical breakdown",
+      "spark-over voltage"
+    ],
+    "category": "electrical",
+    "unit_family": "voltage",
+    "canonical_id": "elec_008"
+  },
+  "Density": {
+    "aliases": [
+      "specific gravity",
+      "bulk density",
+      "material density",
+      "density (g/cm3)",
+      "density (g/cm³)",
+      "density (kg/m3)",
+      "apparent density",
+      "rho",
+      "ρ",
+      "rho (g/cm3)",
+      "Dichte"
+    ],
+    "category": "physical",
+    "unit_family": "density",
+    "canonical_id": "phys_001"
+  },
+  "Water Absorption": {
+    "aliases": [
+      "water uptake",
+      "water absorption (%)",
+      "water absorption (24h)",
+      "water absorption (wt%)",
+      "24h water absorption"
+    ],
+    "category": "physical",
+    "unit_family": "percentage",
+    "canonical_id": "phys_002"
+  },
+  "Moisture Absorption": {
+    "aliases": [
+      "moisture uptake",
+      "moisture content",
+      "moisture absorption (%)",
+      "equilibrium moisture content",
+      "moisture regain"
+    ],
+    "category": "physical",
+    "unit_family": "percentage",
+    "canonical_id": "phys_003"
+  },
+  "Melt Flow Index": {
+    "aliases": [
+      "MFI",
+      "melt index",
+      "melt flow index (g/10min)",
+      "MI"
+    ],
+    "category": "physical",
+    "unit_family": "flow_rate",
+    "canonical_id": "phys_004"
+  },
+  "Melt Flow Rate": {
+    "aliases": [
+      "MFR",
+      "melt flow rate (g/10min)",
+      "melt flow",
+      "MVR",
+      "melt volume rate"
+    ],
+    "category": "physical",
+    "unit_family": "flow_rate",
+    "canonical_id": "phys_005"
+  },
+  "Shrinkage": {
+    "aliases": [
+      "mold shrinkage",
+      "mould shrinkage",
+      "linear shrinkage",
+      "shrinkage (%)",
+      "processing shrinkage",
+      "volumetric shrinkage"
+    ],
+    "category": "physical",
+    "unit_family": "percentage",
+    "canonical_id": "phys_006"
+  },
+  "Porosity": {
+    "aliases": [
+      "void content",
+      "void fraction",
+      "porosity (%)",
+      "pore volume",
+      "open porosity",
+      "total porosity"
+    ],
+    "category": "physical",
+    "unit_family": "percentage",
+    "canonical_id": "phys_007"
+  },
+  "BET Surface Area": {
+    "aliases": [
+      "specific surface area",
+      "SSA",
+      "BET",
+      "surface area",
+      "BET surface area (m2/g)",
+      "BET surface area (m²/g)"
+    ],
+    "category": "physical",
+    "unit_family": "specific_area",
+    "canonical_id": "phys_008"
+  },
+  "Particle Size": {
+    "aliases": [
+      "particle diameter",
+      "mean particle size",
+      "D50",
+      "d50",
+      "average particle size",
+      "particle size (μm)",
+      "particle size (nm)",
+      "median particle size"
+    ],
+    "category": "physical",
+    "unit_family": "length",
+    "canonical_id": "phys_009"
+  },
+  "Filler Content": {
+    "aliases": [
+      "filler loading",
+      "filler concentration",
+      "filler content (wt%)",
+      "filler content (vol%)",
+      "filler content (phr)",
+      "filler fraction",
+      "wt% filler"
+    ],
+    "category": "composite",
+    "unit_family": "percentage",
+    "canonical_id": "comp_001"
+  },
+  "Fibre Content": {
+    "aliases": [
+      "fiber content",
+      "fibre loading",
+      "fiber loading",
+      "glass fibre content",
+      "carbon fibre content",
+      "fibre volume fraction",
+      "fiber volume fraction",
+      "Vf"
+    ],
+    "category": "composite",
+    "unit_family": "percentage",
+    "canonical_id": "comp_002"
+  },
+  "Percolation Threshold": {
+    "aliases": [
+      "percolation limit",
+      "electrical percolation threshold",
+      "percolation concentration",
+      "percolation threshold (wt%)",
+      "percolation threshold (vol%)"
+    ],
+    "category": "composite",
+    "unit_family": "percentage",
+    "canonical_id": "comp_003"
+  },
+  "Degree of Cure": {
+    "aliases": [
+      "cure degree",
+      "conversion",
+      "degree of conversion",
+      "cure conversion",
+      "degree of cure (%)",
+      "crosslink degree",
+      "α"
+    ],
+    "category": "composite",
+    "unit_family": "percentage",
+    "canonical_id": "comp_004"
+  },
+  "Aspect Ratio": {
+    "aliases": [
+      "L/D",
+      "length to diameter ratio",
+      "l/d ratio",
+      "fibre aspect ratio",
+      "fiber aspect ratio",
+      "filler aspect ratio"
+    ],
+    "category": "composite",
+    "unit_family": "dimensionless",
+    "canonical_id": "comp_005"
+  },
+  "Interfacial Adhesion": {
+    "aliases": [
+      "interfacial bonding",
+      "interfacial strength",
+      "IFSS",
+      "interfacial shear strength",
+      "matrix-filler adhesion",
+      "fibre-matrix adhesion"
+    ],
+    "category": "composite",
+    "unit_family": "pressure",
+    "canonical_id": "comp_006"
+  },
+  "Peel Strength": {
+    "aliases": [
+      "peel strength"
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_012"
+  },
+  "Viscosity": {
+    "aliases": [
+      "viscosity",
+      "dynamic viscosity",
+      "kinematic viscosity",
+      "Viskosität"
+    ],
+    "category": "physical",
+    "unit_family": "viscosity",
+    "canonical_id": "phys_010"
+  },
+  "Tensile Shear Strength": {
+    "aliases": [
+      "tensile shear strength",
+      "tensile lap-shear strength",
+      "lap shear",
+      "Zugscherfestigkeit"
+    ],
+    "category": "mechanical",
+    "unit_family": "pressure",
+    "canonical_id": "mech_013"
+  },
+  "Fixture Time": {
+    "aliases": [
+      "fixture time",
+      "fixing time",
+      "curing time",
+      "set time"
+    ],
+    "category": "processing",
+    "unit_family": "time",
+    "canonical_id": "proc_001"
+  },
+  "Volume Change": {
+    "aliases": [
+      "volume change",
+      "Volumenänderung"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0001"
+  },
+  "Skin Formation Time": {
+    "aliases": [
+      "skin formation time"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0002"
+  },
+  "Curing Rate": {
+    "aliases": [
+      "curing rate"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0003"
+  },
+  "Processing Temperature": {
+    "aliases": [
+      "processing temperature",
+      "processing temperature range",
+      "Verarbeitungstemperatur"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0004"
+  },
+  "Thermal Resistance": {
+    "aliases": [
+      "Thermal resistance",
+      "temperature resistance"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0005"
+  },
+  "Short-Term Temperature Resistance": {
+    "aliases": [
+      "short-term temperature resistance",
+      "Short-term maximum temperature resistance",
+      "Temperaturbeständigkeit, kurzfristig max."
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0006"
+  },
+  "Shelf Life": {
+    "aliases": [
+      "shelf life"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0007"
+  },
+  "Volume": {
+    "aliases": [
+      "volume"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0008"
+  },
+  "Maximum Joint Gap": {
+    "aliases": [
+      "maximum joint gap"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0009"
+  },
+  "Service Temperature Range": {
+    "aliases": [
+      "service temperature range"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0010"
+  },
+  "Fill Volume": {
+    "aliases": [
+      "fill volume"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0011"
+  },
+  "Net Weight": {
+    "aliases": [
+      "net weight"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0012"
+  },
+  "Rise Time": {
+    "aliases": [
+      "Rise time",
+      "Hautbildezeit"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0013"
+  },
+  "Through-Hardening Rate": {
+    "aliases": [
+      "Through-hardening rate",
+      "Durchhärtungsgeschwindigkeit"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0014"
+  },
+  "Tensile Strain": {
+    "aliases": [
+      "Tensile strain",
+      "Reißdehnung"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0015"
+  },
+  "Load-Bearing Capacity": {
+    "aliases": [
+      "Load-bearing capacity",
+      "Lagerfähigkeit"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0016"
+  },
+  "Adhesion Rating": {
+    "aliases": [
+      "adhesion rating"
+    ],
+    "category": "unknown",
+    "unit_family": "unknown",
+    "canonical_id": "novel_0017"
+  }
+}

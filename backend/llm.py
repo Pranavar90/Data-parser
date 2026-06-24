@@ -1,8 +1,8 @@
 """
-llm.py — Ollama client with connection pooling and response caching.
-Adapted from Rlresearchassistant for standalone use.
+llm.py — LLM client via LiteLLM SDK (routes to any provider automatically).
 
-Config values (URL, timeout, model options) are read from the config module
+LiteLLM reads API keys from environment (OPENAI_API_KEY, etc.).
+Config values (model, timeout) are read from the config module
 at call time so that saving Settings takes effect without a restart.
 """
 
@@ -13,7 +13,7 @@ import re
 import threading
 from typing import Any, Dict, List, Optional
 
-import httpx
+import litellm
 
 import config as cfg
 from cache import InMemoryCache, cached_llm_response, store_llm_response
@@ -24,47 +24,36 @@ logger = logging.getLogger(__name__)
 _model_list_cache = InMemoryCache(maxsize=4, ttl=30)
 
 
-class OllamaClient:
-    def __init__(self):
-        # Large client-level timeout; individual calls override with cfg values.
-        self.client = httpx.Client(
-            timeout=600.0,
-            limits=httpx.Limits(
-                max_keepalive_connections=5,
-                max_connections=10,
-                keepalive_expiry=120.0,
-            ),
-        )
+class LLMClient:
 
     def is_running(self) -> bool:
-        cached = _model_list_cache.get("ollama_running")
+        cached = _model_list_cache.get("llm_running")
         if cached is not None:
             return cached
-        base = cfg.OLLAMA_BASE.rstrip("/")
         try:
-            r = self.client.get(f"{base}/api/tags", timeout=5.0)
-            ok = r.status_code == 200
-        except Exception:
+            # Quick test call to verify the provider is reachable
+            litellm.completion(
+                model=cfg.LLM_MODEL,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+            )
+            ok = True
+        except Exception as e:
+            logger.warning("Health check failed: %s", e)
             ok = False
-        # Only cache success — failures are re-checked on every poll.
         if ok:
-            _model_list_cache.set("ollama_running", ok)
+            _model_list_cache.set("llm_running", ok)
         return ok
 
     def list_models(self) -> List[str]:
         cached = _model_list_cache.get("models")
         if cached is not None:
             return cached
-        base = cfg.OLLAMA_BASE.rstrip("/")
-        try:
-            r = self.client.get(f"{base}/api/tags", timeout=5.0)
-            if r.status_code == 200:
-                models = [m["name"] for m in r.json().get("models", [])]
-                _model_list_cache.set("models", models)
-                return models
-        except Exception:
-            pass
-        return []
+        # LiteLLM doesn't have a universal model list endpoint —
+        # return the configured model as the available model.
+        models = [cfg.LLM_MODEL]
+        _model_list_cache.set("models", models)
+        return models
 
     def generate(
         self,
@@ -82,63 +71,50 @@ class OllamaClient:
             if cached is not None:
                 return cached
 
-        # Read Ollama options from config at call time so Settings changes
-        # take effect immediately without recreating the singleton.
-        payload: Dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": temperature,
-                "num_gpu": cfg.NUM_GPU,
-                "num_ctx": cfg.NUM_CTX,
-            },
-            "keep_alive": cfg.KEEP_ALIVE,
-        }
+        messages: list = []
         if system:
-            payload["system"] = system
-        if json_mode:
-            payload["format"] = "json"
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
 
-        base = cfg.OLLAMA_BASE.rstrip("/")
+        kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
         try:
-            r = self.client.post(
-                f"{base}/api/generate",
-                json=payload,
-                timeout=float(cfg.OLLAMA_TIMEOUT),
-            )
-            if r.status_code == 200:
-                data = r.json()
-                if json_mode and "response" in data:
-                    parsed = _extract_json(data["response"])
-                    result = parsed if parsed is not None else {"raw_text": data["response"]}
-                    if cache_key and result and "raw_text" not in result:
-                        store_llm_response(cache_key, result)
-                    return result
-                return data
+            resp = litellm.completion(**kwargs)
+            text = resp.choices[0].message.content or ""
+
+            if json_mode:
+                parsed = _extract_json(text)
+                result = parsed if parsed is not None else {"raw_text": text}
+                if cache_key and result and "raw_text" not in result:
+                    store_llm_response(cache_key, result)
+                return result
+            return {"raw_text": text}
         except Exception as e:
             logger.error("Generation error: %s", e)
         return None
 
     def close(self) -> None:
-        try:
-            self.client.close()
-        except Exception:
-            pass
+        pass
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 
-_client_instance: Optional[OllamaClient] = None
+_client_instance: Optional[LLMClient] = None
 _client_lock = threading.Lock()
 
 
-def get_client() -> OllamaClient:
+def get_client() -> LLMClient:
     global _client_instance
     if _client_instance is None:
         with _client_lock:
             if _client_instance is None:
-                _client_instance = OllamaClient()
+                _client_instance = LLMClient()
     return _client_instance
 
 

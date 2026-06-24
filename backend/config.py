@@ -6,12 +6,16 @@ by save_config(). All other modules import via `import config as cfg` so
 they always read the current value, not a frozen copy.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 import yaml
 
 BASE_DIR = Path(__file__).parent
-ROOT_DIR = BASE_DIR.parent
+# In Docker, backend/*.py are in /app/ directly, so .parent = /.
+# Detect by checking if config.yaml exists at parent level.
+_candidate = BASE_DIR.parent
+ROOT_DIR = _candidate if (_candidate / "config.yaml").is_file() else BASE_DIR
 CONFIG_PATH = ROOT_DIR / "config.yaml"
 
 
@@ -33,32 +37,34 @@ def _get(cfg: dict, path: str, default: Any = None) -> Any:
     return val
 
 
+def _env(name: str, default: Any = None) -> Any:
+    """Read from environment variable, return default if not set or empty."""
+    val = os.environ.get(name)
+    return val if val else default
+
+
 def get_all() -> dict:
     """Return full config as a nested dict (for the /api/config endpoint)."""
     cfg = _load()
     return {
-        "ollama": {
-            "base_url":   _get(cfg, "ollama.base_url",        "http://127.0.0.1:11434"),
-            "model":      _get(cfg, "ollama.model",            "qwen2.5:3b-instruct-q4_K_S"),
-            "timeout":    _get(cfg, "ollama.timeout",          300),
-            "num_gpu":    _get(cfg, "ollama.num_gpu",          99),
-            "num_ctx":    _get(cfg, "ollama.num_ctx",          8192),
-            "keep_alive": _get(cfg, "ollama.keep_alive",       "15m"),
+        "llm": {
+            "model":    LLM_MODEL,
+            "timeout":  LLM_TIMEOUT,
         },
         "parser": {
-            "tds_max_chars":   _get(cfg, "parser.tds_max_chars",   7000),
-            "paper_max_chars": _get(cfg, "parser.paper_max_chars", 12000),
-            "chunk_size":      _get(cfg, "parser.chunk_size",      4000),
-            "chunk_overlap":   _get(cfg, "parser.chunk_overlap",   300),
-            "max_retries":     _get(cfg, "parser.max_retries",     1),
-            "tds_bias":        _get(cfg, "parser.tds_bias",        2),
+            "tds_max_chars":   TDS_EXTRACT_CHARS,
+            "paper_max_chars": PAPER_EXTRACT_CHARS,
+            "chunk_size":      CHUNK_SIZE,
+            "chunk_overlap":   CHUNK_OVERLAP,
+            "max_retries":     MAX_RETRIES,
+            "tds_bias":        TDS_BIAS,
         },
         "output": {
-            "json_indent":      _get(cfg, "output.json_indent",      2),
+            "json_indent": JSON_INDENT,
         },
         "app": {
-            "host": _get(cfg, "app.host", "127.0.0.1"),
-            "port": _get(cfg, "app.port", 8000),
+            "host": APP_HOST,
+            "port": APP_PORT,
         },
     }
 
@@ -72,20 +78,15 @@ def save_config(new_cfg: dict) -> None:
 
 def reload() -> None:
     """Re-read config.yaml and update all module-level constants in-place.
-    Called automatically by save_config(). Safe to call externally.
-    Because other modules do `import config as cfg` and access `cfg.X`,
-    they always see the current value after reload().
+    Environment variables override YAML values when set.
     """
-    global OLLAMA_BASE, LLM_MODEL, OLLAMA_TIMEOUT, NUM_GPU, NUM_CTX, KEEP_ALIVE
+    global LLM_MODEL, LLM_TIMEOUT
     global TDS_EXTRACT_CHARS, PAPER_EXTRACT_CHARS, CHUNK_SIZE, CHUNK_OVERLAP
     global MAX_RETRIES, TDS_BIAS, JSON_INDENT, APP_HOST, APP_PORT
+    global SQS_QUEUE_URL, S3_OUTPUT_PREFIX
     new = _load()
-    OLLAMA_BASE         = _get(new, "ollama.base_url",        "http://127.0.0.1:11434")
-    LLM_MODEL           = _get(new, "ollama.model",            "qwen2.5:3b-instruct-q4_K_S")
-    OLLAMA_TIMEOUT      = _get(new, "ollama.timeout",          300)
-    NUM_GPU             = _get(new, "ollama.num_gpu",          99)
-    NUM_CTX             = _get(new, "ollama.num_ctx",          8192)
-    KEEP_ALIVE          = _get(new, "ollama.keep_alive",       "15m")
+    LLM_MODEL           = _env("LLM_MODEL",     _get(new, "llm.model",      "qwen2.5:3b-instruct-q4_K_S"))
+    LLM_TIMEOUT         = int(_env("LLM_TIMEOUT", _get(new, "llm.timeout",  300)))
     TDS_EXTRACT_CHARS   = _get(new, "parser.tds_max_chars",   7000)
     PAPER_EXTRACT_CHARS = _get(new, "parser.paper_max_chars", 12000)
     CHUNK_SIZE          = _get(new, "parser.chunk_size",       4000)
@@ -93,19 +94,17 @@ def reload() -> None:
     MAX_RETRIES         = _get(new, "parser.max_retries",      1)
     TDS_BIAS            = _get(new, "parser.tds_bias",         2)
     JSON_INDENT         = _get(new, "output.json_indent",      2)
-    APP_HOST            = _get(new, "app.host",                "127.0.0.1")
-    APP_PORT            = _get(new, "app.port",                8000)
+    APP_HOST            = _env("APP_HOST", _get(new, "app.host", "127.0.0.1"))
+    APP_PORT            = int(_env("APP_PORT", _get(new, "app.port", 8000)))
+    SQS_QUEUE_URL       = _env("SQS_QUEUE_URL", "")
+    S3_OUTPUT_PREFIX    = _env("S3_OUTPUT_PREFIX", "parsed-json/")
 
 
 # ── Module-level constants (loaded at import; live-updated by reload()) ───────
 _cfg = _load()
 
-OLLAMA_BASE: str         = _get(_cfg, "ollama.base_url",        "http://127.0.0.1:11434")
-LLM_MODEL: str           = _get(_cfg, "ollama.model",            "qwen2.5:3b-instruct-q4_K_S")
-OLLAMA_TIMEOUT: int      = _get(_cfg, "ollama.timeout",          300)
-NUM_GPU: int             = _get(_cfg, "ollama.num_gpu",          99)
-NUM_CTX: int             = _get(_cfg, "ollama.num_ctx",          8192)
-KEEP_ALIVE: str          = _get(_cfg, "ollama.keep_alive",       "15m")
+LLM_MODEL: str       = _env("LLM_MODEL",     _get(_cfg, "llm.model",      "qwen2.5:3b-instruct-q4_K_S"))
+LLM_TIMEOUT: int     = int(_env("LLM_TIMEOUT", _get(_cfg, "llm.timeout",  300)))
 
 TDS_EXTRACT_CHARS: int   = _get(_cfg, "parser.tds_max_chars",   7000)
 PAPER_EXTRACT_CHARS: int = _get(_cfg, "parser.paper_max_chars", 12000)
@@ -116,5 +115,8 @@ TDS_BIAS: int            = _get(_cfg, "parser.tds_bias",         2)
 
 JSON_INDENT: int         = _get(_cfg, "output.json_indent",      2)
 
-APP_HOST: str            = _get(_cfg, "app.host",                "127.0.0.1")
-APP_PORT: int            = _get(_cfg, "app.port",                8000)
+APP_HOST: str            = _env("APP_HOST", _get(_cfg, "app.host", "127.0.0.1"))
+APP_PORT: int            = int(_env("APP_PORT", _get(_cfg, "app.port", 8000)))
+
+SQS_QUEUE_URL: str       = _env("SQS_QUEUE_URL", "")
+S3_OUTPUT_PREFIX: str    = _env("S3_OUTPUT_PREFIX", "parsed-json/")

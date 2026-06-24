@@ -1,6 +1,6 @@
 # Planet Materials Labs — PDF Bulk Parser
 
-A locally-run web application for extracting structured material property data from Technical Data Sheets (TDS) and scientific research papers at scale. All processing happens on your own machine — no data is sent to any cloud service.
+A web application for extracting structured material property data from Technical Data Sheets (TDS) and scientific research papers at scale. Works with any OpenAI-compatible LLM backend — Ollama (local), LiteLLM, vLLM, or cloud providers.
 
 ---
 
@@ -8,17 +8,16 @@ A locally-run web application for extracting structured material property data f
 
 1. [What it does](#what-it-does)
 2. [How it works](#how-it-works)
-3. [What is Ollama?](#what-is-ollama)
-4. [Prerequisites](#prerequisites)
-5. [Installation](#installation)
-6. [Running the app](#running-the-app)
-7. [Using the platform](#using-the-platform)
-8. [Output format](#output-format)
-9. [Folder structure preservation](#folder-structure-preservation)
-10. [Configuration](#configuration)
-11. [Choosing a model](#choosing-a-model)
-12. [Troubleshooting](#troubleshooting)
-13. [Project structure](#project-structure)
+3. [Prerequisites](#prerequisites)
+4. [Installation](#installation)
+5. [Running the app](#running-the-app)
+6. [LLM Configuration](#llm-configuration)
+7. [EC2 Deployment](#ec2-deployment)
+8. [Using the platform](#using-the-platform)
+9. [Output format](#output-format)
+10. [Folder structure preservation](#folder-structure-preservation)
+11. [Troubleshooting](#troubleshooting)
+12. [Project structure](#project-structure)
 
 ---
 
@@ -37,107 +36,25 @@ A locally-run web application for extracting structured material property data f
 ```
 PDF files  →  Text extraction (pdfplumber / PyMuPDF)
            →  Document classification (TDS vs. paper)
-           →  Chunked LLM inference via Ollama (local)
+           →  Chunked LLM inference via OpenAI-compatible API
            →  Structured JSON output
 ```
 
-The parser uses **Ollama**, a tool that lets you run large language models (LLMs) entirely on your own computer. The LLM reads the text from each PDF and returns a structured JSON object containing all the material data it can identify.
+The parser sends extracted PDF text to any **OpenAI-compatible LLM endpoint** and receives structured JSON back. Supported backends:
 
----
-
-## What is Ollama?
-
-Ollama is a free, open-source tool that allows you to download and run LLMs (like Llama, Qwen, Gemma, Mistral, and many others) locally on your machine without an internet connection, without API keys, and without sending any data to external servers.
-
-Think of it like a local version of ChatGPT that runs inside your own computer, accessible via a simple HTTP API.
-
-- **Website:** https://ollama.com
-- **Model library:** https://ollama.com/library (browse available models)
-- Ollama runs as a background service on your machine and exposes an API at `http://127.0.0.1:11434`
-- The parser sends each PDF's text to this API and gets structured data back
+| Backend | Use case |
+|---|---|
+| **Ollama** | Local inference, no API key needed |
+| **LiteLLM** | Proxy to Bedrock, OpenAI, Qwen, or any model |
+| **vLLM** | Self-hosted high-throughput inference |
+| **OpenAI / Azure** | Cloud API with API key |
 
 ---
 
 ## Prerequisites
 
-### 1. Python 3.10 or later
-
-Download from [python.org](https://www.python.org/downloads/) and install.
-
-Verify by opening a terminal and running:
-```bash
-python --version
-```
-You should see `Python 3.10.x` or higher. On some systems you may need `python3`:
-```bash
-python3 --version
-```
-
----
-
-### 2. Ollama
-
-#### Install Ollama
-
-**Windows / macOS:**
-Go to [https://ollama.com](https://ollama.com), click **Download**, and run the installer. On Windows, Ollama installs as a background service and starts automatically.
-
-**Linux:**
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Verify the installation:
-```bash
-ollama --version
-```
-
----
-
-#### Start the Ollama server
-
-On Windows and macOS, Ollama starts automatically after installation. If it is not running, start it manually:
-```bash
-ollama serve
-```
-
-Leave this terminal open. Ollama must be running in the background whenever you use the parser.
-
-To check that it is running, open a browser and go to:
-```
-http://127.0.0.1:11434
-```
-You should see: `Ollama is running`
-
----
-
-#### Pull a model
-
-Before the parser can work, you need to download at least one LLM. Run:
-```bash
-ollama pull qwen2.5:3b-instruct-q4_K_S
-```
-
-This downloads the default extraction model (~2 GB). The download happens once and the model is stored locally.
-
-To verify the model is available:
-```bash
-ollama list
-```
-You should see `qwen2.5:3b-instruct-q4_K_S` in the list.
-
----
-
-#### Ollama quick reference
-
-| Command | What it does |
-|---|---|
-| `ollama serve` | Start the Ollama server (if not already running) |
-| `ollama list` | Show all downloaded models |
-| `ollama pull <model>` | Download a model |
-| `ollama rm <model>` | Delete a model |
-| `ollama run <model>` | Chat with a model interactively in the terminal |
-| `ollama ps` | Show models currently loaded in memory |
+- **Python 3.10+** — [python.org](https://www.python.org/downloads/)
+- **An LLM endpoint** — Ollama (local), LiteLLM proxy, or any OpenAI-compatible API
 
 ---
 
@@ -183,7 +100,7 @@ This installs FastAPI, the PDF parsing libraries (pdfplumber, PyMuPDF), and othe
 
 ## Running the app
 
-Make sure Ollama is running (check `http://127.0.0.1:11434` in a browser), then start the server:
+Make sure your LLM endpoint is running, then start the server:
 
 ```bash
 python run.py
@@ -196,7 +113,7 @@ You will see:
 ==========================================================
   URL    →  http://127.0.0.1:8000
   Model  →  qwen2.5:3b-instruct-q4_K_S
-  Ollama →  http://127.0.0.1:11434
+  LLM    →  http://127.0.0.1:11434
 ==========================================================
   Press Ctrl+C to stop
 ```
@@ -207,13 +124,124 @@ Press `Ctrl+C` in the terminal to stop the server when you are done.
 
 ---
 
+## LLM Configuration
+
+### config.yaml
+
+```yaml
+llm:
+  base_url: http://127.0.0.1:11434   # Any OpenAI-compatible endpoint
+  model: qwen2.5:3b-instruct-q4_K_S  # Model name as known by the provider
+  api_key: ""                          # Leave empty for Ollama, set for cloud APIs
+  timeout: 300                         # Request timeout in seconds
+```
+
+### Environment Variables (override config.yaml)
+
+```bash
+export LLM_BASE_URL="http://localhost:4000"   # LiteLLM proxy
+export LLM_MODEL="bedrock/claude-3-5-sonnet"
+export LLM_API_KEY="sk-..."
+export LLM_TIMEOUT=300
+export APP_HOST="0.0.0.0"                     # Bind to all interfaces (for EC2)
+export APP_PORT=8000
+```
+
+### Example: Ollama (local)
+
+```yaml
+llm:
+  base_url: http://127.0.0.1:11434
+  model: qwen3:8b
+  api_key: ""
+```
+
+### Example: LiteLLM proxy (routes to Bedrock, OpenAI, etc.)
+
+```yaml
+llm:
+  base_url: http://localhost:4000
+  model: bedrock/claude-3-5-sonnet
+  api_key: "sk-litellm-key"
+```
+
+### Example: OpenAI direct
+
+```yaml
+llm:
+  base_url: https://api.openai.com
+  model: gpt-4o
+  api_key: "sk-..."
+```
+
+---
+
+## EC2 Deployment
+
+```bash
+# 1. SSH into EC2 instance
+ssh -i key.pem ec2-user@<instance-ip>
+
+# 2. Install Python 3.10+ and system dependencies
+sudo yum install -y python3.10 python3.10-pip git
+
+# 3. Clone and install
+git clone <repo-url> /opt/jsonparser
+cd /opt/jsonparser
+pip3.10 install -r requirements.txt
+
+# 4. Configure LLM endpoint
+export LLM_BASE_URL="http://localhost:4000"
+export LLM_MODEL="bedrock/claude-3-5-sonnet"
+export APP_HOST="0.0.0.0"
+
+# 5. (Optional) Start LiteLLM proxy
+pip install litellm
+litellm --config litellm_config.yaml --port 4000 &
+
+# 6. Run the parser
+python3.10 run.py
+```
+
+### Running as a systemd Service
+
+Create `/etc/systemd/system/jsonparser.service`:
+
+```ini
+[Unit]
+Description=Planet Materials Labs PDF Parser
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/jsonparser
+Environment="LLM_BASE_URL=http://localhost:4000"
+Environment="LLM_MODEL=bedrock/claude-3-5-sonnet"
+Environment="APP_HOST=0.0.0.0"
+ExecStart=/usr/bin/python3.10 run.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable jsonparser
+sudo systemctl start jsonparser
+```
+
+---
+
 ## Using the platform
 
 ### Status indicator
 
-The top-right corner of the app shows an Ollama status badge:
-- **Green dot** — Ollama is running and the model is ready. You can start parsing.
-- **Red dot / Offline** — Ollama is not running. Start it with `ollama serve` in a terminal, then wait a few seconds for the badge to turn green.
+The top-right corner of the app shows an LLM status badge:
+- **Green dot** — LLM endpoint is running and the model is ready. You can start parsing.
+- **Red dot / Offline** — LLM endpoint is not reachable. Check your LLM backend is running, then wait a few seconds for the badge to turn green.
 
 ---
 
@@ -401,91 +429,32 @@ Output (ZIP or saved folder):
 
 ---
 
-## Configuration
+## Switching Models
 
-All settings can be changed in two ways:
-1. Click the **Settings** button (gear icon) in the top-right of the app — changes take effect immediately without a restart
-2. Edit `config.yaml` in the project root folder directly, then restart the app
-
-```yaml
-ollama:
-  base_url: http://127.0.0.1:11434   # Ollama server address
-  model: qwen2.5:3b-instruct-q4_K_S  # LLM to use for extraction
-  timeout: 300                         # Seconds to wait per LLM call
-  num_ctx: 8192                        # Context window size (tokens)
-  keep_alive: 15m                      # How long to keep model in memory
-
-parser:
-  tds_max_chars: 7000                  # Max characters extracted from TDS docs
-  paper_max_chars: 12000               # Max characters extracted from papers
-  chunk_size: 4000                     # Characters per LLM chunk
-  chunk_overlap: 300                   # Overlap between chunks
-  max_retries: 1                       # Retry attempts if LLM returns invalid JSON
-  tds_bias: 2                          # Scoring bias toward TDS classification
-
-output:
-  json_indent: 2                       # JSON indentation (0 = compact, 2 = readable)
-
-app:
-  host: 127.0.0.1
-  port: 8000
-```
-
----
-
-## Choosing a model
-
-The parser works with any model available in Ollama. Larger models produce better extractions but are slower and require more RAM.
-
-### Recommended models
-
-| Model | Pull command | RAM needed | Speed | Quality |
-|---|---|---|---|---|
-| `qwen2.5:3b-instruct-q4_K_S` | `ollama pull qwen2.5:3b-instruct-q4_K_S` | ~3 GB | Fast | Good (default) |
-| `qwen2.5:7b-instruct` | `ollama pull qwen2.5:7b` | ~5 GB | Medium | Better |
-| `qwen2.5:14b-instruct` | `ollama pull qwen2.5:14b` | ~9 GB | Slow | Best |
-| `gemma3:4b` | `ollama pull gemma3:4b` | ~4 GB | Fast | Good |
-| `llama3.1:8b` | `ollama pull llama3.1:8b` | ~6 GB | Medium | Good |
-
-### Switching models
-
-1. Pull the new model: `ollama pull <model-name>`
-2. In the app, open **Settings** → select the model from the dropdown → click **Save Settings**
-   — or —
-   Edit `ollama.model` in `config.yaml` and restart the app
-
-> **Note:** The model selector in Settings is populated from `ollama list`. If a model does not appear, make sure you have pulled it first.
-
-### GPU acceleration
-
-If your machine has an NVIDIA or AMD GPU, Ollama will use it automatically (dramatically faster). On Apple Silicon Macs, the GPU is always used. No additional setup is required.
-
-To check if your GPU is being used:
-```bash
-ollama ps
-```
-When a model is loaded, the output will show how much is loaded onto the GPU vs. CPU.
+The model can be changed via:
+1. **Settings UI** — click the gear icon, select from the dropdown, save
+2. **config.yaml** — edit `llm.model` and restart
+3. **Environment variable** — set `LLM_MODEL` before starting
 
 ---
 
 ## Troubleshooting
 
-### "Ollama Offline" badge in the app
+### "LLM Offline" badge in the app
 
-Ollama is not running. Fix:
-```bash
-ollama serve
-```
-Wait a few seconds, then the badge in the app will turn green automatically.
+The LLM endpoint is not reachable. Check that your LLM backend is running:
+- **Ollama**: `ollama serve`
+- **LiteLLM**: `litellm --config litellm_config.yaml --port 4000`
+- Verify the URL in Settings matches where your LLM is running
 
 ---
 
 ### Parsing takes a very long time
 
 - The 3b model is the fastest. Use it unless extraction quality is insufficient.
-- Check whether your GPU is being used: `ollama ps`. If everything is on CPU, extraction will be significantly slower.
+- If using Ollama, check GPU usage: `ollama ps`. CPU-only inference is significantly slower.
 - Very long PDFs (papers with 20+ pages) take longer because the text is split into multiple chunks, each requiring a separate LLM call.
-- Increase `ollama.timeout` in Settings if you are getting timeout errors on large files.
+- Increase the timeout in Settings if you are getting timeout errors on large files.
 
 ---
 
@@ -501,9 +470,9 @@ Wait a few seconds, then the badge in the app will turn green automatically.
 ### "All LLM calls failed" in the output JSON
 
 This means the model returned something that was not valid JSON (or returned nothing). Causes:
-- The model is not suitable for structured extraction — try `qwen2.5:3b-instruct-q4_K_S` or another instruct-tuned model.
+- The model is not suitable for structured extraction — try an instruct-tuned model.
 - The file has almost no readable text (scanned image PDF).
-- Ollama ran out of memory — try a smaller model or reduce `parser.chunk_size`.
+- The LLM backend ran out of memory — try a smaller model or reduce `parser.chunk_size`.
 
 ---
 
@@ -544,7 +513,7 @@ jsonparser/
 │   ├── main.py          FastAPI server — all HTTP endpoints and job management
 │   ├── parser.py        PDF text extraction using pdfplumber (primary) and PyMuPDF (fallback)
 │   ├── extractor.py     LLM-based extraction logic — prompts, chunking, merging
-│   ├── llm.py           Ollama HTTP client with connection pooling and health checks
+│   ├── llm.py           OpenAI-compatible LLM client (works with LiteLLM/Ollama/vLLM)
 │   ├── cache.py         SHA256-keyed in-memory LLM response cache
 │   └── config.py        Config loader — reads config.yaml, exposes typed values
 ├── static/
@@ -569,7 +538,7 @@ For those who want to understand what is happening under the hood:
 
 3. **Chunking** — The text is split into overlapping chunks (default: 4000 chars per chunk, 300-char overlap) so that large documents can be processed even if the model has a limited context window.
 
-4. **LLM inference** — Each chunk is sent to Ollama with a detailed system prompt instructing the model to return only valid JSON in a specific schema. Temperature is set to 0 for deterministic output.
+4. **LLM inference** — Each chunk is sent to the configured LLM endpoint (via OpenAI-compatible API) with a detailed system prompt instructing the model to return only valid JSON in a specific schema. Temperature is set to 0 for deterministic output.
 
 5. **Merging** — Results from multiple chunks are merged: scalar fields (material name, conclusions, etc.) take the first non-empty value; array fields (properties, findings, limitations) are deduplicated and combined.
 

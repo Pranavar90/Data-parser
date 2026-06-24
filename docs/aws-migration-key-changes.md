@@ -137,44 +137,45 @@ LiteLLM Proxy (OpenAI-compatible API, runs on same EC2 or as sidecar)
 
 ---
 
-### 5.2 PDF Content Extraction: Text-Only → VLM-Capable (MAJOR REFACTOR)
+### 5.2 PDF Content Extraction: Doc-Type Routed — TDS via LLM, Papers via VLM
 
 **Current state (what exists today):**
 - `parser.py` uses pdfplumber to extract the **text layer** from PDFs
 - pymupdf is used as a fallback — also text-only
-- **No vision capability whatsoever** — this is the biggest gap
-- Complex PDFs (scanned documents, image tables, multi-column layouts) produce empty or garbage text
+- **No vision capability whatsoever**
+- Works well for TDS documents (clean, digital manufacturer PDFs)
+- Fails on research papers (scanned pages, multi-column, complex figures)
 
 **What must change:**
 
-Two extraction paths are needed:
+Two extraction paths routed by **document type**:
 
-**Path A — Text extraction (keep for clean digital PDFs):**
-- pdfplumber remains viable for manufacturer TDS docs with clean text layers
-- Cheaper and faster than VLM (~70-80% of TDS documents are clean digital PDFs)
-- Existing `parser.py:extract_text()` and `clean_pdf_text()` are reusable
+**TDS → Text path (existing pipeline, upgraded model):**
+- pdfplumber text extraction works reliably for manufacturer TDS documents
+- Existing `parser.py:extract_text()` and `clean_pdf_text()` are reusable as-is
+- Chunking, merge, and system prompts all stay the same
+- Just needs a better model (Bedrock Claude via LiteLLM instead of 3b)
 
-**Path B — VLM extraction (new, for complex PDFs):**
+**Paper → VLM path (new):**
 - Render PDF pages as images using pymupdf (`page.get_pixmap()` — already in dependencies)
 - Send page images to a vision-capable model via LiteLLM:
   - Qwen3-VL (if self-hosted via Ollama on GPU instance)
   - Claude 3.5 Sonnet Vision via Bedrock
 - VLM performs **both** text extraction AND property extraction in one pass
-- This potentially collapses `parser.py` + `extractor.py` into a single VLM call per page
+- New `SYSTEM_PROMPT_PAPER_VLM` adapted for image input (same output schema)
 
-**Routing decision — which path for which PDF:**
+**Routing decision:**
 
-| Signal | Route to |
-|---|---|
-| pdfplumber extracts >500 chars of text | Path A (text) |
-| pdfplumber extracts <500 chars or fails | Path B (VLM) |
-| S3 metadata tag `x-amz-meta-scanned: true` | Path B (VLM) |
-| File size >10MB with few text chars | Path B (VLM) |
+| Document Type | Extraction Path | Detection Method |
+|---|---|---|
+| **TDS** | Text (pdfplumber + LLM) | S3 key prefix `/tds/` or `detect_document_type()` |
+| **Paper** | VLM (page images + vision model) | S3 key prefix `/papers/` or `detect_document_type()` |
+| **TDS with confidence < 0.3** | VLM (re-queued) | Automatic re-queue on low extraction confidence |
 
-**Cost implications at 100K documents:**
-- Path A (text + LLM): ~$0.01-0.05 per document (text tokens only)
-- Path B (VLM): ~$0.10-0.50 per document (image tokens are expensive)
-- Hybrid approach saves 70-80% vs pure VLM on corpus of mostly digital PDFs
+**Cost implications at 100K documents (~50/50 split):**
+- TDS text path: 50K docs x ~$0.03/doc = ~$1,500
+- Paper VLM path: 50K docs x ~$0.25/doc = ~$12,500
+- **Total: ~$14,000** for initial backlog
 
 **Files affected:**
 - `parser.py` — add `extract_as_images()` function alongside existing `extract_text()`

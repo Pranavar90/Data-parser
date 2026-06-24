@@ -1,0 +1,43 @@
+services:
+  parser-ui:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - LLM_MODEL=${LLM_MODEL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_OUTPUT_PREFIX=${S3_OUTPUT_PREFIX}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+    volumes:
+      - ./canonical_registry.json:/app/canonical_registry.json
+      - ./normaliser_audit.log:/app/normaliser_audit.log
+    restart: unless-stopped
+
+  parser-worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command: python sqs_consumer.py
+    env_file:
+      - .env
+    environment:
+      - LLM_MODEL=${LLM_MODEL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_OUTPUT_PREFIX=${S3_OUTPUT_PREFIX}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - SQS_QUEUE_URL=${SQS_QUEUE_URL}
+    volumes:
+      - ./canonical_registry.json:/app/canonical_registry.json
+      - ./normaliser_audit.log:/app/normaliser_audit.log
+    restart: unless-stopped
+    depends_on:
+      - parser-ui

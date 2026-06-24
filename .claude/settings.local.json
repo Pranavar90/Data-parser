@@ -7,7 +7,18 @@
       "WebFetch(domain:www.planetmatlabs.com)",
       "WebFetch(domain:www.linkedin.com)",
       "WebFetch(domain:brandfetch.com)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(powershell:*)",
+      "Bash(docker info:*)",
+      "Bash(break)",
+      "Bash(docker compose:*)",
+      "Bash(OPENAI_API_KEY=6813220d1c0ec215ab17836a9f47a5c914bf8160abfff0d9bed6ff71f3f8e7d4 OPENAI_API_BASE=https://api.planetmatlabs.com LLM_MODEL=qwen3 python run.py)",
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(docker system prune:*)",
+      "Bash(pip cache:*)",
+      "Bash(curl:*)"
     ]
   }
 }

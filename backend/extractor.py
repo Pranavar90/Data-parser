@@ -328,7 +328,7 @@ def extract_from_text(text: str, doc_type: Optional[str] = None) -> Dict[str, An
             logger.warning("Chunk %d FAILED", i + 1)
 
     if not results:
-        return _empty_result(doc_type, "All LLM calls failed — check Ollama is running")
+        return _empty_result(doc_type, "All LLM calls failed — check LLM service is running")
 
     merged = _merge(results, doc_type)
     merged["chunks_processed"] = len(results)

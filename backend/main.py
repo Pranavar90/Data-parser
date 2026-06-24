@@ -29,11 +29,16 @@ from sse_starlette.sse import EventSourceResponse
 import config as cfg
 from extractor import extract_from_text
 from llm import get_client, shutdown_client, invalidate_health_cache
+from normaliser import normalise_property_name
 from parser import extract_text
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
-ROOT_DIR = Path(__file__).parent.parent
+# In Docker, backend/*.py files are copied directly into /app/, so
+# __file__.parent.parent would resolve to / instead of /app.
+# Detect by checking if the expected subdirs exist at parent.parent.
+_candidate = Path(__file__).parent.parent
+ROOT_DIR = _candidate if (_candidate / "static").is_dir() else Path(__file__).parent
 
 # Thread pool for sync PDF parsing (avoids blocking the event loop)
 _executor = ThreadPoolExecutor(max_workers=2)
@@ -70,21 +75,20 @@ templates = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
 
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/api/health")
 async def health():
-    # Run blocking httpx calls in the thread pool to avoid stalling the event loop.
+    # Run blocking calls in the thread pool to avoid stalling the event loop.
     loop = asyncio.get_running_loop()
     client = get_client()
     ok = await loop.run_in_executor(None, client.is_running)
     models = await loop.run_in_executor(None, client.list_models) if ok else []
     return {
-        "ollama": ok,
+        "llm": ok,
         "models": models,
         "active_model": cfg.LLM_MODEL,
-        "ollama_url": cfg.OLLAMA_BASE,
     }
 
 
@@ -352,17 +356,24 @@ def _process_file(abs_path: str) -> Dict[str, Any]:
         if doc_type == "tds"
         else raw.get("material_properties_mentioned", [])
     )
-    properties = [
-        {
-            "property_name": p.get("name") or p.get("property", ""),
-            "value":         p.get("value"),
-            "unit":          p.get("unit", ""),
-            "confidence":    p.get("confidence", 0.0),
-            "context":       p.get("context", ""),
-        }
-        for p in raw_props
-        if p.get("name") or p.get("property")
-    ]
+    properties = []
+    for p in raw_props:
+        raw_name = p.get("name") or p.get("property", "")
+        if not raw_name:
+            continue
+        norm = normalise_property_name(raw_name)
+        properties.append({
+            "property_name":        norm["property_name"],
+            "raw_name":             norm["raw_name"],
+            "canonical_id":         norm["canonical_id"],
+            "category":             norm["category"],
+            "unit_family":          norm["unit_family"],
+            "normalisation_method": norm["normalisation_method"],
+            "value":                p.get("value"),
+            "unit":                 p.get("unit", ""),
+            "confidence":           p.get("confidence", 0.0),
+            "context":              p.get("context", ""),
+        })
 
     output: Dict[str, Any] = {
         "doc_id":               doc_id,
