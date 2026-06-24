@@ -27,23 +27,12 @@ _model_list_cache = InMemoryCache(maxsize=4, ttl=30)
 class LLMClient:
 
     def is_running(self) -> bool:
-        cached = _model_list_cache.get("llm_running")
-        if cached is not None:
-            return cached
-        try:
-            # Quick test call to verify the provider is reachable
-            litellm.completion(
-                model=cfg.LLM_MODEL,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=1,
-            )
-            ok = True
-        except Exception as e:
-            logger.warning("Health check failed: %s", e)
-            ok = False
-        if ok:
-            _model_list_cache.set("llm_running", ok)
-        return ok
+        # No LLM call — just check that model and API key are configured.
+        # Actual connectivity is verified on the first real parse job.
+        import os
+        has_model = bool(cfg.LLM_MODEL)
+        has_key = bool(os.environ.get("OPENAI_API_KEY"))
+        return has_model and has_key
 
     def list_models(self) -> List[str]:
         cached = _model_list_cache.get("models")
