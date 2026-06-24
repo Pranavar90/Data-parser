@@ -27,10 +27,9 @@ from fastapi.templating import Jinja2Templates
 from sse_starlette.sse import EventSourceResponse
 
 import config as cfg
-from extractor import extract_from_text
+from extractor import extract_from_text, extract_from_images
 from llm import get_client, shutdown_client, invalidate_health_cache
-from normaliser import normalise_property_name
-from parser import extract_text
+from parser import extract_text, extract_as_images, VLM_TEXT_THRESHOLD
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -336,7 +335,15 @@ def _process_file(abs_path: str) -> Dict[str, Any]:
     """
     chunks = extract_text(abs_path)
     full_text = "\n".join(c["content"] for c in chunks if c.get("content"))
-    raw = extract_from_text(full_text)
+
+    if len(full_text) < VLM_TEXT_THRESHOLD:
+        # VLM path — text extraction insufficient, use page images
+        logger.info("VLM path for %s (%d chars < %d threshold)", abs_path, len(full_text), VLM_TEXT_THRESHOLD)
+        images = extract_as_images(abs_path)
+        raw = extract_from_images(images)
+    else:
+        # Text path — standard extraction
+        raw = extract_from_text(full_text)
 
     doc_id   = str(uuid.uuid4())
     filename = os.path.basename(abs_path)
@@ -356,24 +363,17 @@ def _process_file(abs_path: str) -> Dict[str, Any]:
         if doc_type == "tds"
         else raw.get("material_properties_mentioned", [])
     )
-    properties = []
-    for p in raw_props:
-        raw_name = p.get("name") or p.get("property", "")
-        if not raw_name:
-            continue
-        norm = normalise_property_name(raw_name)
-        properties.append({
-            "property_name":        norm["property_name"],
-            "raw_name":             norm["raw_name"],
-            "canonical_id":         norm["canonical_id"],
-            "category":             norm["category"],
-            "unit_family":          norm["unit_family"],
-            "normalisation_method": norm["normalisation_method"],
-            "value":                p.get("value"),
-            "unit":                 p.get("unit", ""),
-            "confidence":           p.get("confidence", 0.0),
-            "context":              p.get("context", ""),
-        })
+    properties = [
+        {
+            "property_name": p.get("name") or p.get("property", ""),
+            "value":         p.get("value"),
+            "unit":          p.get("unit", ""),
+            "confidence":    p.get("confidence", 0.0),
+            "context":       p.get("context", ""),
+        }
+        for p in raw_props
+        if p.get("name") or p.get("property")
+    ]
 
     output: Dict[str, Any] = {
         "doc_id":               doc_id,

@@ -1,8 +1,9 @@
 """
-parser.py — PDF text extraction using pdfplumber (primary) and pymupdf (fallback).
-Adapted from Rlresearchassistant for standalone use.
+parser.py — PDF text/image extraction using pdfplumber (primary) and pymupdf (fallback).
+Includes VLM image rendering for PDFs with insufficient text content.
 """
 
+import base64
 import logging
 import re
 from typing import Any, Dict, List
@@ -11,6 +12,9 @@ import pdfplumber
 import fitz  # pymupdf
 
 logger = logging.getLogger(__name__)
+
+# Minimum chars from text extraction before falling back to VLM
+VLM_TEXT_THRESHOLD = 500
 
 
 def extract_text(pdf_path: str) -> List[Dict[str, Any]]:
@@ -81,6 +85,31 @@ def clean_pdf_text(text: str) -> str:
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     result = "\n".join(lines)
     return re.sub(r"\n{3,}", "\n\n", result)
+
+
+def extract_as_images(pdf_path: str, dpi: int = 200, max_dim: int = 1536) -> List[Dict[str, Any]]:
+    """Render PDF pages as base64 JPEG images for VLM consumption."""
+    pages = []
+    try:
+        doc = fitz.open(pdf_path)
+        zoom = dpi / 72.0
+        matrix = fitz.Matrix(zoom, zoom)
+        for i in range(len(doc)):
+            pix = doc[i].get_pixmap(matrix=matrix)
+            if max(pix.width, pix.height) > max_dim:
+                scale = max_dim / max(pix.width, pix.height)
+                pix = doc[i].get_pixmap(matrix=fitz.Matrix(zoom * scale, zoom * scale))
+            img_bytes = pix.tobytes("jpeg")
+            pages.append({
+                "page": i + 1,
+                "image_b64": base64.b64encode(img_bytes).decode("ascii"),
+                "mime": "image/jpeg",
+            })
+        doc.close()
+        logger.info("Rendered %d pages as images from %s", len(pages), pdf_path)
+    except Exception as e:
+        logger.error("Image extraction failed for %s: %s", pdf_path, e)
+    return pages
 
 
 def _table_to_string(table: List[List]) -> str:

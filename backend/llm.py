@@ -88,6 +88,48 @@ class LLMClient:
             logger.error("Generation error: %s", e)
         return None
 
+    def generate_with_vision(
+        self,
+        model: str,
+        image_b64: str,
+        system: Optional[str] = None,
+        prompt: str = "Extract all material properties from this page.",
+        temperature: float = 0.0,
+        json_mode: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """Send a page image to a vision model and get structured JSON back."""
+        messages: list = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_b64}"
+                }},
+            ],
+        })
+
+        kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        try:
+            resp = litellm.completion(**kwargs)
+            text = resp.choices[0].message.content or ""
+            if json_mode:
+                parsed = _extract_json(text)
+                return parsed if parsed is not None else {"raw_text": text}
+            return {"raw_text": text}
+        except Exception as e:
+            logger.error("VLM generation error: %s", e)
+        return None
+
     def close(self) -> None:
         pass
 

@@ -334,3 +334,72 @@ def extract_from_text(text: str, doc_type: Optional[str] = None) -> Dict[str, An
     merged["chunks_processed"] = len(results)
     store_llm_response(f"extract:{cache_key}", merged)
     return merged
+
+
+# ── VLM extraction (image-based) ─────────────────────────────────────────────
+
+SYSTEM_PROMPT_VLM_TDS = """\
+You are looking at a page image from a Technical Data Sheet.
+Read all tables carefully, including column headers, row labels, and units.
+Extract every numerical value visible in the image.
+""" + SYSTEM_PROMPT_TDS
+
+SYSTEM_PROMPT_VLM_PAPER = """\
+You are looking at a page image from a research paper.
+Read all tables carefully, including column headers, row labels, and units.
+Pay attention to multi-column layouts — extract from all columns.
+Extract data from figures and charts where numerical values are visible.
+""" + SYSTEM_PROMPT_PAPER
+
+
+def extract_from_images(
+    images: list,
+    doc_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Extract material properties from PDF page images using a VLM.
+
+    Args:
+        images: List of dicts with 'page', 'image_b64', 'mime' keys
+                (from parser.extract_as_images)
+        doc_type: 'tds' or 'paper' (auto-detected if None)
+    """
+    if not images:
+        return _empty_result(doc_type or "unknown", "No page images to process")
+
+    if not doc_type:
+        doc_type = "tds"  # default for VLM path — most image-heavy PDFs are TDS
+
+    vlm_model = cfg._env("LLM_VLM_MODEL", "openai/qwen3-vl")
+    system = SYSTEM_PROMPT_VLM_TDS if doc_type == "tds" else SYSTEM_PROMPT_VLM_PAPER
+    client = get_client()
+    results = []
+
+    logger.info("VLM extraction: %d pages, doc_type=%s, model=%s", len(images), doc_type, vlm_model)
+
+    for img in images:
+        page_num = img["page"]
+        logger.info("VLM page %d/%d...", page_num, len(images))
+
+        parsed = client.generate_with_vision(
+            model=vlm_model,
+            image_b64=img["image_b64"],
+            system=system,
+            prompt=f"Extract all material properties from page {page_num} of this document.",
+            temperature=0.0,
+            json_mode=True,
+        )
+
+        if parsed and isinstance(parsed, dict) and "raw_text" not in parsed:
+            n = len(parsed.get("properties", [])) + len(parsed.get("material_properties_mentioned", []))
+            logger.info("VLM page %d OK — %d props", page_num, n)
+            results.append(parsed)
+        else:
+            logger.warning("VLM page %d FAILED", page_num)
+
+    if not results:
+        return _empty_result(doc_type, "All VLM calls failed")
+
+    merged = _merge(results, doc_type)
+    merged["chunks_processed"] = len(results)
+    merged["extraction_method"] = "vlm"
+    return merged
