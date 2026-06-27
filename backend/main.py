@@ -3,6 +3,7 @@ main.py — FastAPI backend for the Planet Materials Labs PDF Bulk Parser.
 """
 
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -19,6 +20,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+SCHEMA_VERSION = "1.0"
+
+
+def compute_md5(file_path: str) -> Optional[str]:
+    """MD5 of a file's raw bytes, read in chunks. Returns None on failure."""
+    try:
+        h = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        logger.warning("Could not compute MD5 for %s", file_path, exc_info=True)
+        return None
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -329,7 +345,7 @@ async def _run_job(job_id: str, files: List[Dict[str, str]], queue: asyncio.Queu
         _job_queues.pop(job_id, None)
 
 
-def _process_file(abs_path: str) -> Dict[str, Any]:
+def _process_file(abs_path: str, source_s3_key: Optional[str] = None) -> Dict[str, Any]:
     """Sync — extracts and parses a single PDF. Runs inside thread pool.
     Output schema mirrors Rlresearchassistant JSON exports exactly.
     """
@@ -378,6 +394,9 @@ def _process_file(abs_path: str) -> Dict[str, Any]:
     output: Dict[str, Any] = {
         "doc_id":               doc_id,
         "filename":             filename,
+        "schema_version":       SCHEMA_VERSION,
+        "source_md5":           compute_md5(abs_path),
+        "source_s3_key":        source_s3_key,
         "doc_type":             doc_type,
         "material_name":        material_name,
         "extraction_confidence": raw.get("extraction_confidence", 0.0),
