@@ -87,11 +87,12 @@ def main():
             log.info("SKIP: %s", key)
             continue
 
-        # ponytail: safe temp name via index, avoids collisions without uuid overhead
-        local_path = str(TMP_DIR / f"{i}.pdf")
+        real_name = key.rsplit("/", 1)[-1]
+        # ponytail: index prefix keeps temp files collision-safe across folders
+        local_path = str(TMP_DIR / f"{i}_{real_name}")
         try:
             s3.download_file(BUCKET, key, local_path)
-            result = _process_file(local_path, source_s3_key=key)
+            result = _process_file(local_path, source_s3_key=key, filename_override=real_name)
             body = json.dumps(result, indent=2, ensure_ascii=False)
             s3.put_object(Bucket=BUCKET, Key=out_key, Body=body, ContentType="application/json")
             done += 1

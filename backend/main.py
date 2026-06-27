@@ -458,7 +458,7 @@ async def _run_job(job_id: str, files: List[Dict[str, str]], queue: asyncio.Queu
         _job_queues.pop(job_id, None)
 
 
-def _process_file(abs_path: str, source_s3_key: Optional[str] = None) -> Dict[str, Any]:
+def _process_file(abs_path: str, source_s3_key: Optional[str] = None, filename_override: Optional[str] = None) -> Dict[str, Any]:
     """Sync — extracts and parses a single PDF. Runs inside thread pool.
     Output schema mirrors Rlresearchassistant JSON exports exactly.
     """
@@ -475,7 +475,7 @@ def _process_file(abs_path: str, source_s3_key: Optional[str] = None) -> Dict[st
         raw = extract_from_text(full_text)
 
     doc_id   = str(uuid.uuid4())
-    filename = os.path.basename(abs_path)
+    filename = filename_override or os.path.basename(abs_path)
     doc_type = raw.get("document_type", "unknown")
 
     # Material name — 3-tier fallback (same as Rlresearchassistant)
