@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Batch Dashboard — Planet Materials Labs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg-base:       #07080f;
+  --bg-surface:    #0c0e1a;
+  --bg-elevated:   #121628;
+  --bg-hover:      #1a1f35;
+  --border:        rgba(255,255,255,0.06);
+  --border-strong: rgba(255,255,255,0.12);
+  --accent:        #6366f1;
+  --accent-bright: #818cf8;
+  --green:         #10b981;
+  --green-bg:      rgba(16,185,129,0.10);
+  --green-border:  rgba(16,185,129,0.25);
+  --red:           #ef4444;
+  --red-bg:        rgba(239,68,68,0.10);
+  --red-border:    rgba(239,68,68,0.25);
+  --amber:         #f59e0b;
+  --text-primary:   #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted:     #475569;
+  --font-ui:   'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font-ui); background:var(--bg-base); color:var(--text-primary); min-height:100vh; padding:2rem; }
+h1 { font-size:1.5rem; font-weight:700; margin-bottom:.25rem; }
+.subtitle { color:var(--text-secondary); font-size:.85rem; margin-bottom:1.5rem; }
+.card { background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; padding:1.25rem; margin-bottom:1rem; }
+.card h2 { font-size:.95rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.75rem; }
+
+/* Badge */
+.badge { display:inline-block; padding:.2rem .6rem; border-radius:6px; font-size:.75rem; font-weight:600; text-transform:uppercase; }
+.badge-running { background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); }
+.badge-stopped { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); }
+
+/* Progress bar */
+.progress-wrap { display:flex; align-items:center; gap:1rem; margin-top:.75rem; }
+.progress-bar { flex:1; height:22px; background:var(--bg-elevated); border-radius:11px; overflow:hidden; border:1px solid var(--border); }
+.progress-fill { height:100%; background:linear-gradient(90deg, var(--accent), var(--accent-bright)); border-radius:11px; transition:width .6s ease; }
+.progress-label { font-size:1.1rem; font-weight:700; min-width:180px; }
+.stats-row { display:flex; gap:1.5rem; margin-top:.5rem; font-size:.85rem; color:var(--text-secondary); }
+
+/* Folder table */
+table { width:100%; border-collapse:collapse; font-size:.85rem; }
+th { text-align:left; padding:.4rem .6rem; color:var(--text-muted); font-weight:500; border-bottom:1px solid var(--border-strong); }
+td { padding:.4rem .6rem; border-bottom:1px solid var(--border); }
+.mini-bar { width:100%; height:8px; background:var(--bg-elevated); border-radius:4px; overflow:hidden; }
+.mini-fill { height:100%; background:var(--accent); border-radius:4px; transition:width .6s ease; }
+
+/* Log feed */
+.log-feed { font-family:var(--font-mono); font-size:.78rem; color:var(--text-secondary); max-height:320px; overflow-y:auto; background:var(--bg-elevated); border-radius:8px; padding:.75rem; }
+.log-feed div { padding:.15rem 0; white-space:pre-wrap; word-break:break-all; }
+.log-feed div:first-child { color:var(--text-primary); }
+
+.footer { text-align:center; color:var(--text-muted); font-size:.75rem; margin-top:1.5rem; }
+</style>
+</head>
+<body>
+
+<h1>S3 Batch Dashboard</h1>
+<p class="subtitle">Read-only monitor for legacy PDF parsing &mdash; auto-refreshes every 5s</p>
+
+<!-- Overall progress -->
+<div class="card">
+  <h2>Overall Progress <span id="badge" class="badge badge-stopped">STOPPED</span></h2>
+  <div class="progress-wrap">
+    <div class="progress-bar"><div id="bar" class="progress-fill" style="width:0%"></div></div>
+    <div id="progress-label" class="progress-label">-- / -- (0%)</div>
+  </div>
+  <div class="stats-row">
+    <span>Failed: <strong id="fail-count">0</strong></span>
+    <span id="updated">Last updated: --</span>
+  </div>
+</div>
+
+<!-- Per-folder breakdown -->
+<div class="card">
+  <h2>Per-Folder Breakdown</h2>
+  <table>
+    <thead><tr><th>Folder</th><th style="width:90px">Parsed</th><th style="width:90px">Total</th><th style="width:40%">Progress</th></tr></thead>
+    <tbody id="folders"><tr><td colspan="4" style="color:var(--text-muted)">Loading&hellip;</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Activity feed -->
+<div class="card">
+  <h2>Activity Feed</h2>
+  <div id="log" class="log-feed"><div>Waiting for data&hellip;</div></div>
+</div>
+
+<!-- Failed keys -->
+<div id="failed-card" class="card" style="display:none">
+  <h2>Recent Failures</h2>
+  <div id="failed-list" class="log-feed"></div>
+</div>
+
+<div class="footer" id="footer">Polling /api/dashboard/status every 5s</div>
+
+<script>
+function fmt(n){ return n.toLocaleString(); }
+
+async function refresh(){
+  try {
+    const r = await fetch('/api/dashboard/status');
+    const d = await r.json();
+
+    // Badge
+    const badge = document.getElementById('badge');
+    badge.textContent = d.running ? 'RUNNING' : 'STOPPED';
+    badge.className = 'badge ' + (d.running ? 'badge-running' : 'badge-stopped');
+
+    // Progress bar
+    document.getElementById('bar').style.width = d.pct + '%';
+    document.getElementById('progress-label').textContent =
+      fmt(d.parsed_total) + ' / ' + fmt(d.source_total) + ' parsed (' + d.pct + '%)';
+    document.getElementById('fail-count').textContent = d.failed_count;
+
+    // Updated at
+    const t = new Date(d.updated_at);
+    document.getElementById('updated').textContent = 'Last updated: ' + t.toLocaleTimeString();
+
+    // Folders
+    const tbody = document.getElementById('folders');
+    if(d.folders.length){
+      tbody.innerHTML = d.folders.map(f => {
+        const pct = f.total ? Math.round(f.parsed/f.total*100) : 0;
+        return '<tr><td>'+f.name+'</td><td>'+fmt(f.parsed)+'</td><td>'+fmt(f.total)+'</td>'
+          +'<td><div class="mini-bar"><div class="mini-fill" style="width:'+pct+'%"></div></div></td></tr>';
+      }).join('');
+    }
+
+    // Log
+    const logEl = document.getElementById('log');
+    logEl.innerHTML = d.log_lines.length
+      ? d.log_lines.map(l => '<div>'+l.replace(/</g,'&lt;')+'</div>').join('')
+      : '<div>No log entries yet</div>';
+
+    // Failed keys
+    const fc = document.getElementById('failed-card');
+    if(d.failed_count > 0){
+      fc.style.display = '';
+      document.getElementById('failed-list').innerHTML =
+        d.failed_keys.map(k => '<div>'+k.replace(/</g,'&lt;')+'</div>').join('');
+    } else { fc.style.display = 'none'; }
+
+  } catch(e){
+    document.getElementById('footer').textContent = 'Fetch error: ' + e.message;
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -10,14 +10,16 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import time
 import uuid
 import zipfile
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +243,117 @@ async def save_to_folder(job_id: str, body: dict):
         saved.append(str(dest))
 
     return {"saved": len(saved), "output_path": str(out_dir.resolve())}
+
+
+# ── Dashboard (read-only batch monitor) ──────────────────────────────────────
+
+_DASHBOARD_BUCKET = os.environ.get("S3_BUCKET", "material-data-bucket")
+_DASHBOARD_INPUT_PREFIX = os.environ.get("INPUT_PREFIX", "legacy-tds/")
+_DASHBOARD_OUTPUT_PREFIX = os.environ.get("OUTPUT_PREFIX", "parsed-json/")
+_BATCH_LOG = Path(os.environ.get("BATCH_LOG", "/opt/jsonparser/backend/batch.log"))
+_FAILED_KEYS_FILE = Path(os.environ.get("FAILED_KEYS_FILE", "/opt/jsonparser/backend/failed_keys.txt"))
+
+# ponytail: simple time-based cache, no cache lib needed
+_dashboard_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
+_CACHE_TTL = 10  # seconds
+
+
+def _s3_count_keys(prefix: str, suffix: str = "") -> Tuple[int, Dict[str, int]]:
+    """Count objects under prefix (with optional suffix filter), also group by first subfolder."""
+    import boto3
+    s3 = boto3.client("s3")
+    paginator = s3.get_paginator("list_objects_v2")
+    total = 0
+    by_folder: Dict[str, int] = defaultdict(int)
+    for page in paginator.paginate(Bucket=_DASHBOARD_BUCKET, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if suffix and not key.lower().endswith(suffix):
+                continue
+            total += 1
+            # Extract first subfolder after the prefix
+            rel = key[len(prefix):]
+            parts = rel.split("/")
+            folder = parts[0] if len(parts) > 1 else "(root)"
+            by_folder[folder] += 1
+    return total, dict(by_folder)
+
+
+def _read_tail(path: Path, n: int = 15) -> List[str]:
+    """Last n lines of a file, most recent first. Empty list if file missing."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return list(reversed(lines[-n:]))
+    except (FileNotFoundError, OSError):
+        return []
+
+
+def _count_lines(path: Path) -> int:
+    try:
+        return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
+    except (FileNotFoundError, OSError):
+        return 0
+
+
+def _batch_is_running() -> bool:
+    """Check if batch_s3.py is running via subprocess (no psutil dependency)."""
+    try:
+        # Works on Linux (EC2)
+        result = subprocess.run(
+            ["pgrep", "-f", "batch_s3.py"],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _get_dashboard_data() -> Dict[str, Any]:
+    """Sync — runs inside thread pool via run_in_executor."""
+    now = time.time()
+    if _dashboard_cache["data"] and (now - _dashboard_cache["ts"]) < _CACHE_TTL:
+        return _dashboard_cache["data"]
+
+    src_total, src_folders = _s3_count_keys(_DASHBOARD_INPUT_PREFIX, ".pdf")
+    out_total, out_folders = _s3_count_keys(_DASHBOARD_OUTPUT_PREFIX, ".json")
+
+    folders = []
+    for name in sorted(set(src_folders) | set(out_folders)):
+        folders.append({
+            "name": name,
+            "total": src_folders.get(name, 0),
+            "parsed": out_folders.get(name, 0),
+        })
+
+    failed_count = _count_lines(_FAILED_KEYS_FILE)
+    failed_keys = _read_tail(_FAILED_KEYS_FILE, 5)
+
+    data = {
+        "source_total": src_total,
+        "parsed_total": out_total,
+        "pct": round(out_total / src_total * 100, 1) if src_total else 0,
+        "folders": folders,
+        "log_lines": _read_tail(_BATCH_LOG, 15),
+        "failed_count": failed_count,
+        "failed_keys": failed_keys,
+        "running": _batch_is_running(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _dashboard_cache["data"] = data
+    _dashboard_cache["ts"] = now
+    return data
+
+
+@app.get("/dashboard")
+async def dashboard(request: Request):
+    return templates.TemplateResponse(request, "dashboard.html")
+
+
+@app.get("/api/dashboard/status")
+async def dashboard_status():
+    loop = asyncio.get_running_loop()
+    data = await loop.run_in_executor(_executor, _get_dashboard_data)
+    return data
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
