@@ -1165,6 +1165,35 @@ body::after {
   body { background: #07080f !important; }
   body::after { display: none !important; }
 }
+
+/* ── View tabs ─────────────────────────────────────────────────────────── */
+.view-tabs { display:flex; gap:2px; margin-left:24px; }
+.view-tab {
+  padding:6px 14px; border-radius:6px; border:1px solid transparent;
+  background:transparent; color:var(--text-muted); font-size:12px; font-weight:500;
+  cursor:pointer; transition:all var(--t-fast); font-family:var(--font-ui);
+}
+.view-tab:hover { color:var(--text-secondary); background:var(--bg-hover); }
+.view-tab.active { color:var(--text-primary); background:var(--bg-elevated); border-color:var(--border-strong); }
+
+/* ── Live-feed dashboard ───────────────────────────────────────────────── */
+.lf-wrap { flex:1; overflow-y:auto; padding:24px 32px; }
+.lf-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:10px; padding:16px 20px; margin-bottom:12px; }
+.lf-card h2 { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:var(--text-muted); margin-bottom:10px; }
+.lf-badge { display:inline-block; padding:2px 8px; border-radius:5px; font-size:11px; font-weight:600; text-transform:uppercase; margin-left:8px; }
+.lf-badge-run { background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); }
+.lf-badge-stop { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); }
+.lf-progress-bar { height:18px; background:var(--bg-elevated); border-radius:9px; overflow:hidden; border:1px solid var(--border); flex:1; }
+.lf-progress-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent-bright)); border-radius:9px; transition:width .6s ease; }
+.lf-stats { display:flex; gap:16px; margin-top:6px; font-size:12px; color:var(--text-secondary); }
+.lf-table { width:100%; border-collapse:collapse; font-size:12px; }
+.lf-table th { text-align:left; padding:4px 8px; color:var(--text-muted); font-weight:500; border-bottom:1px solid var(--border-strong); }
+.lf-table td { padding:4px 8px; border-bottom:1px solid var(--border); }
+.lf-mini-bar { width:100%; height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden; }
+.lf-mini-fill { height:100%; background:var(--accent); border-radius:3px; transition:width .6s ease; }
+.lf-log { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); max-height:260px; overflow-y:auto; background:var(--bg-elevated); border-radius:6px; padding:10px; }
+.lf-log div { padding:1px 0; white-space:pre-wrap; word-break:break-all; }
+.lf-log div:first-child { color:var(--text-primary); }
 </style>
 </head>
 <body>
@@ -1187,6 +1216,10 @@ body::after {
         <div class="topbar-sub">PDF Bulk Parser</div>
       </div>
     </div>
+    <div class="view-tabs">
+      <button class="view-tab active" onclick="switchView('upload')">Upload</button>
+      <button class="view-tab" onclick="switchView('livefeed')">Live Feed</button>
+    </div>
     <div class="topbar-right">
       <div class="ollama-badge" id="ollama-badge">
         <div class="ollama-dot" id="ollama-dot"></div>
@@ -1202,6 +1235,8 @@ body::after {
     </div>
   </header>
 
+  <!-- VIEW: Upload (default) -->
+  <div id="view-upload" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
   <!-- Workspace (left panel + main area) -->
   <div class="workspace">
 
@@ -1416,6 +1451,44 @@ body::after {
       </div>
     </div>
   </div>
+  </div><!-- end view-upload -->
+
+  <!-- VIEW: Live Feed (hidden by default) -->
+  <div id="view-livefeed" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+    <div class="lf-wrap">
+
+      <div class="lf-card">
+        <h2>Overall Progress <span id="lf-badge" class="lf-badge lf-badge-stop">STOPPED</span></h2>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+          <div class="lf-progress-bar"><div id="lf-bar" class="lf-progress-fill" style="width:0%"></div></div>
+          <span id="lf-label" style="font-size:13px;font-weight:700;min-width:170px">-- / -- (0%)</span>
+        </div>
+        <div class="lf-stats">
+          <span>Failed: <strong id="lf-fail">0</strong></span>
+          <span id="lf-updated" style="margin-left:auto">Last updated: --</span>
+        </div>
+      </div>
+
+      <div class="lf-card">
+        <h2>Per-Folder Breakdown</h2>
+        <table class="lf-table">
+          <thead><tr><th>Folder</th><th style="width:80px">Parsed</th><th style="width:80px">Total</th><th style="width:40%">Progress</th></tr></thead>
+          <tbody id="lf-folders"><tr><td colspan="4" style="color:var(--text-muted)">Loading&hellip;</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="lf-card">
+        <h2>Activity Feed</h2>
+        <div id="lf-log" class="lf-log"><div>Waiting for data&hellip;</div></div>
+      </div>
+
+      <div class="lf-card" id="lf-fail-card" style="display:none">
+        <h2>Recent Failures</h2>
+        <div id="lf-fail-list" class="lf-log"></div>
+      </div>
+
+    </div>
+  </div><!-- end view-livefeed -->
 
 </div><!-- end app-shell -->
 
@@ -2443,6 +2516,53 @@ function toast(msg, type) {
   el.className = 'show ' + type;
   clearTimeout(_tt);
   _tt = setTimeout(function() { el.className = ''; }, 3500);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VIEW SWITCHER + LIVE FEED POLLING
+// ══════════════════════════════════════════════════════════════════════════
+let _lfTimer = null;
+
+function switchView(view) {
+  const tabs = document.querySelectorAll('.view-tab');
+  tabs[0].classList.toggle('active', view === 'upload');
+  tabs[1].classList.toggle('active', view === 'livefeed');
+  document.getElementById('view-upload').style.display = view === 'upload' ? 'flex' : 'none';
+  document.getElementById('view-livefeed').style.display = view === 'livefeed' ? 'flex' : 'none';
+  if (view === 'livefeed') { lfRefresh(); _lfTimer = setInterval(lfRefresh, 5000); }
+  else { clearInterval(_lfTimer); _lfTimer = null; }
+}
+
+function lfFmt(n) { return n.toLocaleString(); }
+
+async function lfRefresh() {
+  try {
+    const d = await fetch('/api/dashboard/status').then(r => r.json());
+    const badge = document.getElementById('lf-badge');
+    badge.textContent = d.running ? 'RUNNING' : 'STOPPED';
+    badge.className = 'lf-badge ' + (d.running ? 'lf-badge-run' : 'lf-badge-stop');
+    document.getElementById('lf-bar').style.width = d.pct + '%';
+    document.getElementById('lf-label').textContent = lfFmt(d.parsed_total) + ' / ' + lfFmt(d.source_total) + ' (' + d.pct + '%)';
+    document.getElementById('lf-fail').textContent = d.failed_count;
+    document.getElementById('lf-updated').textContent = 'Last updated: ' + new Date(d.updated_at).toLocaleTimeString();
+
+    const tbody = document.getElementById('lf-folders');
+    tbody.innerHTML = d.folders.length ? d.folders.map(function(f) {
+      const pct = f.total ? Math.round(f.parsed / f.total * 100) : 0;
+      return '<tr><td>' + f.name + '</td><td>' + lfFmt(f.parsed) + '</td><td>' + lfFmt(f.total) + '</td>'
+        + '<td><div class="lf-mini-bar"><div class="lf-mini-fill" style="width:' + pct + '%"></div></div></td></tr>';
+    }).join('') : '<tr><td colspan="4" style="color:var(--text-muted)">No data</td></tr>';
+
+    document.getElementById('lf-log').innerHTML = d.log_lines.length
+      ? d.log_lines.map(function(l) { return '<div>' + l.replace(/</g, '&lt;') + '</div>'; }).join('')
+      : '<div>No log entries yet</div>';
+
+    const fc = document.getElementById('lf-fail-card');
+    if (d.failed_count > 0) {
+      fc.style.display = '';
+      document.getElementById('lf-fail-list').innerHTML = d.failed_keys.map(function(k) { return '<div>' + k.replace(/</g, '&lt;') + '</div>'; }).join('');
+    } else { fc.style.display = 'none'; }
+  } catch(e) { /* silent — next poll will retry */ }
 }
 </script>
 </body>
