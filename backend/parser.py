@@ -87,14 +87,36 @@ def clean_pdf_text(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", result)
 
 
-def extract_as_images(pdf_path: str, dpi: int = 200, max_dim: int = 1536) -> List[Dict[str, Any]]:
-    """Render PDF pages as base64 JPEG images for VLM consumption."""
+def detect_figure_pages(pdf_path: str) -> List[int]:
+    """Return 0-based page indices that contain embedded images (figures)."""
+    figure_pages = []
+    try:
+        doc = fitz.open(pdf_path)
+        for i in range(len(doc)):
+            if doc[i].get_images():
+                figure_pages.append(i)
+        doc.close()
+    except Exception as e:
+        logger.warning("Figure detection failed for %s: %s", pdf_path, e)
+    return figure_pages
+
+
+def extract_as_images(pdf_path: str, dpi: int = 200, max_dim: int = 1536, page_indices: List[int] | None = None) -> List[Dict[str, Any]]:
+    """Render PDF pages as base64 JPEG images for VLM consumption.
+
+    Args:
+        page_indices: If provided, render only these 0-based page indices.
+                      If None, render all pages.
+    """
     pages = []
     try:
         doc = fitz.open(pdf_path)
+        indices = page_indices if page_indices is not None else range(len(doc))
         zoom = dpi / 72.0
         matrix = fitz.Matrix(zoom, zoom)
-        for i in range(len(doc)):
+        for i in indices:
+            if i < 0 or i >= len(doc):
+                continue
             pix = doc[i].get_pixmap(matrix=matrix)
             if max(pix.width, pix.height) > max_dim:
                 scale = max_dim / max(pix.width, pix.height)

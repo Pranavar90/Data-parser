@@ -47,7 +47,7 @@ from sse_starlette.sse import EventSourceResponse
 import config as cfg
 from extractor import extract_from_text, extract_from_images
 from llm import get_client, shutdown_client, invalidate_health_cache
-from parser import extract_text, extract_as_images, VLM_TEXT_THRESHOLD
+from parser import extract_text, extract_as_images, detect_figure_pages, VLM_TEXT_THRESHOLD
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -458,6 +458,34 @@ async def _run_job(job_id: str, files: List[Dict[str, str]], queue: asyncio.Queu
         _job_queues.pop(job_id, None)
 
 
+ENABLE_VLM = os.environ.get("ENABLE_VLM", "true").lower() in ("true", "1", "yes")
+VLM_MAX_PAGES = int(os.environ.get("VLM_MAX_PAGES", "10"))
+
+
+def _merge_extractions(text_raw: Dict[str, Any], vlm_raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge VLM-extracted properties into text-extracted result, deduplicating by name+value."""
+    seen = set()
+    # Index existing properties
+    for p in text_raw.get("properties", []):
+        seen.add(f"{p.get('name', '')}-{p.get('value', '')}")
+    for p in text_raw.get("material_properties_mentioned", []):
+        seen.add(f"{p.get('property', '')}-{p.get('value', '')}")
+
+    # Add new VLM properties that aren't duplicates
+    for p in vlm_raw.get("properties", []):
+        key = f"{p.get('name', '')}-{p.get('value', '')}"
+        if key not in seen and p.get("name"):
+            seen.add(key)
+            text_raw.setdefault("properties", []).append(p)
+    for p in vlm_raw.get("material_properties_mentioned", []):
+        key = f"{p.get('property', '')}-{p.get('value', '')}"
+        if key not in seen and p.get("property"):
+            seen.add(key)
+            text_raw.setdefault("material_properties_mentioned", []).append(p)
+
+    return text_raw
+
+
 def _process_file(abs_path: str, source_s3_key: Optional[str] = None, filename_override: Optional[str] = None) -> Dict[str, Any]:
     """Sync — extracts and parses a single PDF. Runs inside thread pool.
     Output schema mirrors Rlresearchassistant JSON exports exactly.
@@ -465,14 +493,34 @@ def _process_file(abs_path: str, source_s3_key: Optional[str] = None, filename_o
     chunks = extract_text(abs_path)
     full_text = "\n".join(c["content"] for c in chunks if c.get("content"))
 
+    extraction_method = "text"
+
     if len(full_text) < VLM_TEXT_THRESHOLD:
-        # VLM path — text extraction insufficient, use page images
+        # Scanned-doc fallback — full VLM
         logger.info("VLM path for %s (%d chars < %d threshold)", abs_path, len(full_text), VLM_TEXT_THRESHOLD)
-        images = extract_as_images(abs_path)
-        raw = extract_from_images(images)
+        if ENABLE_VLM:
+            images = extract_as_images(abs_path)
+            raw = extract_from_images(images)
+            extraction_method = "vlm"
+        else:
+            raw = extract_from_text(full_text)
     else:
-        # Text path — standard extraction
+        # Text path — always run text extraction
         raw = extract_from_text(full_text)
+
+        # Figure-aware VLM: vision on pages that contain images
+        if ENABLE_VLM:
+            figure_pages = detect_figure_pages(abs_path)
+            if figure_pages:
+                capped = figure_pages[:VLM_MAX_PAGES]
+                logger.info("Figure pages detected in %s: %d (capped to %d)", abs_path, len(figure_pages), len(capped))
+                fig_images = extract_as_images(abs_path, page_indices=capped)
+                if fig_images:
+                    doc_type = raw.get("document_type")
+                    vlm_raw = extract_from_images(fig_images, doc_type=doc_type)
+                    # Merge VLM properties into text-extracted result
+                    raw = _merge_extractions(raw, vlm_raw)
+                    extraction_method = "text+vlm"
 
     doc_id   = str(uuid.uuid4())
     filename = filename_override or os.path.basename(abs_path)
@@ -509,6 +557,7 @@ def _process_file(abs_path: str, source_s3_key: Optional[str] = None, filename_o
         "filename":             filename,
         "schema_version":       SCHEMA_VERSION,
         "source_md5":           compute_md5(abs_path),
+        "extraction_method":    extraction_method,
         "source_s3_key":        source_s3_key,
         "doc_type":             doc_type,
         "material_name":        material_name,
