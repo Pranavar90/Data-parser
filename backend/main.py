@@ -3,6 +3,7 @@ main.py — FastAPI backend for the Planet Materials Labs PDF Bulk Parser.
 """
 
 import asyncio
+import functools
 import hashlib
 import io
 import json
@@ -11,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 import zipfile
@@ -58,7 +60,8 @@ _candidate = Path(__file__).parent.parent
 ROOT_DIR = _candidate if (_candidate / "static").is_dir() else Path(__file__).parent
 
 # Thread pool for sync PDF parsing (avoids blocking the event loop)
-_executor = ThreadPoolExecutor(max_workers=2)
+UPLOAD_CONCURRENCY = int(os.environ.get("UPLOAD_CONCURRENCY", "3"))
+_executor = ThreadPoolExecutor(max_workers=UPLOAD_CONCURRENCY)
 
 # In-memory job store with bounded size (local tool; no persistence needed)
 _jobs: Dict[str, Dict] = {}
@@ -396,6 +399,41 @@ def _evict_old_jobs() -> None:
         _jobs.pop(jid, None)
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Check if an exception is a rate-limit / 429 error."""
+    msg = str(exc).lower()
+    if "429" in msg or "rate" in msg or "too many" in msg or "throttl" in msg:
+        return True
+    if hasattr(exc, "status_code") and getattr(exc, "status_code", None) == 429:
+        return True
+    return False
+
+
+_RETRY_ATTEMPTS = 3
+_RETRY_BASE_DELAY = 2  # seconds
+
+
+def _process_file_with_retry(abs_path: str, **kwargs) -> Dict[str, Any]:
+    """Wrap _process_file with exponential backoff on rate-limit errors."""
+    last_exc = None
+    for attempt in range(_RETRY_ATTEMPTS + 1):
+        try:
+            return _process_file(abs_path, **kwargs)
+        except Exception as e:
+            last_exc = e
+            if attempt < _RETRY_ATTEMPTS and _is_rate_limit_error(e):
+                delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning("Rate-limited on %s, retry %d/%d in %ds", abs_path, attempt + 1, _RETRY_ATTEMPTS, delay)
+                time.sleep(delay)
+            else:
+                raise
+    raise last_exc  # unreachable, but keeps type-checker happy
+
+
+# Lock for thread-safe updates to _jobs entries from worker threads
+_job_lock = threading.Lock()
+
+
 async def _run_job(job_id: str, files: List[Dict[str, str]], queue: asyncio.Queue):
     job = _jobs[job_id]
     total = len(files)
@@ -404,26 +442,30 @@ async def _run_job(job_id: str, files: List[Dict[str, str]], queue: asyncio.Queu
     try:
         await queue.put({"type": "start", "total": total, "files": [f["rel_path"] for f in files]})
 
-        # ARCH-002: use get_running_loop() — correct inside a running coroutine.
         loop = asyncio.get_running_loop()
 
-        for i, f in enumerate(files):
-            await queue.put({
-                "type": "progress",
-                "index": i,
-                "total": total,
-                "file": f["rel_path"],
-                "status": "processing",
-            })
-
+        # Submit all files concurrently; each coroutine carries its own
+        # index + file ref and never raises — errors become result tuples.
+        async def _run_one(i: int, f: Dict[str, str]):
+            t0 = time.time()
             try:
-                t0 = time.time()
-                data = await loop.run_in_executor(_executor, _process_file, f["abs_path"])
-                elapsed = round(time.time() - t0, 1)
+                data = await loop.run_in_executor(
+                    _executor,
+                    functools.partial(_process_file_with_retry, f["abs_path"]),
+                )
+                return (i, f, data, round(time.time() - t0, 1), None)
+            except Exception as e:
+                return (i, f, None, round(time.time() - t0, 1), e)
 
-                job["results"].append({"rel_path": f["rel_path"], "data": data, "elapsed": elapsed})
+        tasks = [_run_one(i, f) for i, f in enumerate(files)]
+
+        for coro in asyncio.as_completed(tasks):
+            i, f, data, elapsed, err = await coro
+
+            if err is None:
+                with _job_lock:
+                    job["results"].append({"rel_path": f["rel_path"], "data": data, "elapsed": elapsed})
                 success += 1
-
                 await queue.put({
                     "type": "complete",
                     "index": i,
@@ -435,24 +477,25 @@ async def _run_job(job_id: str, files: List[Dict[str, str]], queue: asyncio.Queu
                     "props": data.get("properties_count", 0),
                     "elapsed": elapsed,
                 })
-            except Exception as e:
+            else:
                 failed += 1
-                job["errors"].append({"file": f["rel_path"], "error": str(e)})
+                with _job_lock:
+                    job["errors"].append({"file": f["rel_path"], "error": str(err)})
                 await queue.put({
                     "type": "complete",
                     "index": i,
                     "total": total,
                     "file": f["rel_path"],
                     "status": "failed",
-                    "error": str(e),
+                    "error": str(err),
                 })
 
         summary = {"total": total, "success": success, "failed": failed, "job_id": job_id}
-        job["status"] = "done"
-        job["summary"] = summary
+        with _job_lock:
+            job["status"] = "done"
+            job["summary"] = summary
         await queue.put({"type": "done", **summary})
     finally:
-        # Always clean up temp files, even if the job errors out.
         if job.get("tmp_dir"):
             shutil.rmtree(job["tmp_dir"], ignore_errors=True)
         _job_queues.pop(job_id, None)
